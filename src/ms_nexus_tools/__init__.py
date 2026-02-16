@@ -2,5 +2,9 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+from .api import *
+from .cli.ION2RFI import ION2RFI
+
+
 def main() -> None:
     print("Hello from ms-nexus-tools!")

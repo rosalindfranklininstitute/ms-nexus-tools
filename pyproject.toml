@@ -8,14 +8,30 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "h5py>=3.15.1",
+    "hypothesis>=6.151.7",
+    "icecream>=2.1.10",
+    "nexusformat>=2.0.1",
+    "numpy>=2.4.2",
+    "pytest>=9.0.2",
+]
 license = "Apache-2.0"
 license-files = ["LICENSES/*"]
 
 [project.scripts]
-ms-nexus-tools = "ms_nexus_tools:main"
 ION2RFI = "ms_nexus_tools:ION2RFI"
 
 [build-system]
 requires = ["uv_build>=0.10.0,<0.11.0"]
 build-backend = "uv_build"
+
+[tool.ruff]
+indent-width=4
+
+[tool.ruff.lint]
+select=['E4','E7','E9','F','N']
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F402"]
+
