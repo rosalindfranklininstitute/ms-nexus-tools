@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import math
 
 from .utils import count_digits
@@ -233,11 +233,6 @@ def calculate_chunks(
 
     spectra_chunks = _chunk_images_then_spectra(
         bounds, chunks_per_layer, layers_per_chunk
-    )
-    max_chunk_count = (
-        bounds.layer_count
-        * (min(bounds.layer_width, bounds.layer_height) ** 2)
-        * bounds.spectrum_length
     )
 
     image_chunks = _chunk_spectra_then_images(

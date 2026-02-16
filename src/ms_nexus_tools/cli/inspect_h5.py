@@ -2,7 +2,7 @@ import argparse
 
 import h5py as h5
 
-from lib import print_group
+from ..lib import print_group
 
 parser = argparse.ArgumentParser(prog="inspect")
 parser.add_argument("filename", help="The file")

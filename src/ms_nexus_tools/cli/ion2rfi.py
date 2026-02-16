@@ -3,7 +3,7 @@ import argparse
 from ..api import ion
 
 
-def ION2RFI():
+def ion2rfi():
     parser = argparse.ArgumentParser(prog="ION2RFI")
     parser.add_argument("-i", "--input", help="The input file")
     parser.add_argument("-o", "--output", help="The output file")

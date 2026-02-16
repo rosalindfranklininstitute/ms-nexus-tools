@@ -1,10 +1,7 @@
-from typing import Self
 from dataclasses import dataclass
 import os
 import shutil
 from pathlib import Path
-import argparse
-import math
 from multiprocessing import Pool
 
 import numpy as np
@@ -77,7 +74,7 @@ class SubprocessArgs:
     chunk: chunking.ChunkBounds
     hdf_out_file: Path
 
-    image_paths: ImageBounds
+    image_paths: IONImageBounds
 
 
 def assign_data_vds(args: SubprocessArgs):
@@ -117,7 +114,9 @@ def assign_data_vds(args: SubprocessArgs):
     entry.save(args.hdf_out_file)
 
 
-def process_metadata(hdf_in_path: Path) -> tuple[NXinstrument, ImageBounds, ImageAxis]:
+def process_metadata(
+    hdf_in_path: Path,
+) -> tuple[NXinstrument, IONImageBounds, ImageAxis]:
     with h5.File(hdf_in_path, "r") as hdfinfile:
         metadata = hdfinfile["ExperimentDetails"].attrs
         chunk_height = metadata["LayerDimensionX"][0]
@@ -135,7 +134,7 @@ def process_metadata(hdf_in_path: Path) -> tuple[NXinstrument, ImageBounds, Imag
 
         mass_axis = NXfield(hdfinfile["ExperimentDetails/MassArray"][:], name="mass")
 
-        image_bounds = ImageBounds(
+        image_bounds = IONImageBounds(
             int(layer_count), int(layer_width), int(layer_height), int(spectrum_length)
         )
     layer_axis = NXfield(np.arange(1, layer_count + 1, 1.0), name="layer")
@@ -151,7 +150,10 @@ def process_metadata(hdf_in_path: Path) -> tuple[NXinstrument, ImageBounds, Imag
 
 
 def create_spectra_vds(
-    hdf_vds_path: Path, hdf_in_path: Path, bounds: ImageBounds, append: bool = True
+    hdf_vds_path: Path,
+    hdf_in_path: Path,
+    bounds: IONImageBounds,
+    append: bool = True,
 ):
     with h5.File(hdf_vds_path, "a" if append else "w") as vds:
         spectra_layout = h5.VirtualLayout(
@@ -169,7 +171,7 @@ def create_spectra_vds(
 
 
 def create_image_vds(
-    hdf_vds_path: Path, hdf_in_path: Path, bounds: ImageBounds, append: bool = True
+    hdf_vds_path: Path, hdf_in_path: Path, bounds: IONImageBounds, append: bool = True
 ):
     with h5.File(hdf_vds_path, "a" if append else "w") as vds:
         mass_layout = h5.VirtualLayout(
@@ -201,7 +203,7 @@ def process_field_in_memory(
 
 def process_field_on_disk(
     data: NXdata,
-    bounds: ImageBounds,
+    bounds: IONImageBounds,
     processors: int,
     hdf_vds_path: Path,
     field_name: str,
@@ -252,7 +254,7 @@ def process(args: ProcessArgs):
         with time_this("metadata"):
             entry["instrument"], bounds, axis = process_metadata(args.hdf_in_path)
 
-        spectra_chunks, image_chunks, memory_info = calculate_chunks(
+        spectra_chunks, image_chunks, memory_info = chunking.calculate_chunks(
             args.chunk_count, args.chunk_memory, args.processors, bounds
         )
         ic(memory_info)
@@ -323,61 +325,3 @@ def process(args: ProcessArgs):
                             "mass_images",
                             image_chunks,
                         )
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog="ION2RFI")
-    parser.add_argument("-i", "--input", help="The input file")
-    parser.add_argument("-o", "--output", help="The output file")
-    parser.add_argument(
-        "-k",
-        "--chunks",
-        help="How many intermediate chunks to use. Default: 150.",
-        default=150,
-        type=int,
-    )
-    parser.add_argument(
-        "-m",
-        "--chunk-memory",
-        help="The maximum memory a chunk should take, in Gb. Default: unbounded.",
-        default=None,
-        type=float,
-    )
-
-    parser.add_argument(
-        "-j",
-        "--processors",
-        help="Process the data using sub-processors on disk using this many processors. If 1 it does not chunk onto disk, but remains in memory. Defaults: 1",
-        default=1,
-        type=int,
-    )
-
-    parser.add_argument(
-        "--no-spectra",
-        help="If present, will not process the spectra part of the input file. Default: True",
-        action="store_false",
-        dest="spectra",
-    )
-
-    parser.add_argument(
-        "--no-mass-images",
-        help="If present, will not process the mass_images part of the input file. Default: True",
-        action="store_false",
-        dest="mass_images",
-    )
-
-    args = parser.parse_args()
-
-    process_args = ProcessArgs(
-        args.input,
-        args.output,
-        args.chunks,
-        args.chunk_memory,
-        processors=args.processors,
-        do_spectra=args.spectra,
-        do_mass_images=args.mass_images,
-        compression="gzip",
-        compression_level=4,
-    )
-
-    process(process_args)

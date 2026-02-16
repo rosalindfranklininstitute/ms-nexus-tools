@@ -2,8 +2,6 @@ from contextlib import contextmanager, AbstractContextManager
 import time
 import threading
 
-from icecream import ic
-
 
 @contextmanager
 def time_this(name: str):

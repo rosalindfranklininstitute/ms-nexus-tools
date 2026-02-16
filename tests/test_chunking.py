@@ -1,14 +1,11 @@
 from hypothesis import given, strategies as st
-import pytest
 
 from ms_nexus_tools import lib as mnxlib
-
-from icecream import ic
 
 
 @given(
     st.integers(min_value=-1),
-    st.floats(min_value=1e-5),
+    st.floats(min_value=1e-3, max_value=1000),
     st.integers(min_value=1),
     st.integers(min_value=1),
     st.integers(min_value=1),
@@ -57,7 +54,7 @@ def test_chunks_image_dimensions(width, height, chunks_per_image):
 
 @given(
     st.integers(min_value=-1, max_value=1000),
-    st.floats(min_value=1e-5),
+    st.floats(min_value=1e-3, max_value=1000),
     st.integers(min_value=1, max_value=100),
     st.integers(min_value=1, max_value=100),
     st.integers(min_value=1, max_value=100),

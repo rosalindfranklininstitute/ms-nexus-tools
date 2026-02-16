@@ -2,8 +2,9 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from .api import *
-from .cli.ION2RFI import ION2RFI
+from . import lib as lib
+from . import api as api
+from .cli.ion2rfi import ion2rfi
 
 
 def main() -> None:
