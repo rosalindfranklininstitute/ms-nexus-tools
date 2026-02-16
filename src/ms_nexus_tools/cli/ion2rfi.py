@@ -5,8 +5,8 @@ from ..api import ion
 
 def ion2rfi():
     parser = argparse.ArgumentParser(prog="ION2RFI")
-    parser.add_argument("-i", "--input", help="The input file")
-    parser.add_argument("-o", "--output", help="The output file")
+    parser.add_argument("-i", "--input", help="The input file", required=True)
+    parser.add_argument("-o", "--output", help="The output file", required=True)
     parser.add_argument(
         "-k",
         "--chunks",

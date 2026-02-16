@@ -2,6 +2,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
+import cProfile
+
 from . import lib as lib
 from . import api as api
 from .cli.ion2rfi import ion2rfi
@@ -9,3 +11,10 @@ from .cli.ion2rfi import ion2rfi
 
 def main() -> None:
     print("Hello from ms-nexus-tools!")
+
+
+def profile() -> None:
+    cProfile.run(
+        """import ms_nexus_tools; ms_nexus_tools.ion2rfi() """,
+        filename="ion2rfi.perf",
+    )
