@@ -1,0 +1,11 @@
+version = 1
+
+[[annotations]]
+path = ".python-version"
+SPDX-FileCopyrightText = "Duncan McDougall <duncan.mcdougall@rfi.ac.uk>"
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "uv.lock"
+SPDX-FileCopyrightText = "Duncan McDougall <duncan.mcdougall@rfi.ac.uk>"
+SPDX-License-Identifier = "Apache-2.0"
