@@ -1,0 +1,583 @@
+from typing import NamedTuple
+
+
+class Isotope(NamedTuple):
+    nominal: int
+    accurate: float
+    abundance: float
+
+
+class Element(NamedTuple):
+    name: str
+    symbol: str
+    isotopes: list[Isotope]
+
+
+elements = {
+    "E": Element("Electron", "E", [Isotope(0, 5.485799090441e-4, 100)]),
+    "Al": Element("Aluminum", "Al", [Isotope(27, 26.981541, 100.0)]),
+    "Sb": Element(
+        "Antimony",
+        "Sb",
+        [Isotope(121, 120.903824, 57.3), Isotope(123, 122.904222, 42.7)],
+    ),
+    "Ar": Element(
+        "Argon",
+        "Ar",
+        [
+            Isotope(36, 35.967546, 0.34),
+            Isotope(38, 37.962732, 0.063),
+            Isotope(40, 39.962383, 99.6),
+        ],
+    ),
+    "As": Element("Arsenic", "As", [Isotope(75, 74.921596, 100.0)]),
+    "Ba": Element(
+        "Barium",
+        "Ba",
+        [
+            Isotope(130, 129.906277, 0.11),
+            Isotope(132, 131.905042, 0.1),
+            Isotope(134, 133.90449, 2.42),
+            Isotope(135, 134.905668, 6.59),
+            Isotope(136, 135.904556, 7.85),
+            Isotope(137, 136.905816, 11.23),
+            Isotope(138, 137.905236, 71.7),
+        ],
+    ),
+    "Be": Element("Beryllium", "Be", [Isotope(9, 9.012183, 100.0)]),
+    "Bi": Element("Bismuth", "Bi", [Isotope(209, 208.980388, 100.0)]),
+    "B": Element(
+        "Boron", "B", [Isotope(10, 10.012938, 19.8), Isotope(11, 11.009305, 80.2)]
+    ),
+    "Br": Element(
+        "Bromine", "Br", [Isotope(79, 78.918336, 50.69), Isotope(81, 80.91629, 49.31)]
+    ),
+    "Cd": Element(
+        "Cadmium",
+        "Cd",
+        [
+            Isotope(106, 105.906461, 1.25),
+            Isotope(108, 107.904186, 0.89),
+            Isotope(110, 109.903007, 12.49),
+            Isotope(111, 110.904182, 12.8),
+            Isotope(112, 111.902761, 24.13),
+            Isotope(113, 112.904401, 12.22),
+            Isotope(114, 113.903361, 28.73),
+            Isotope(116, 115.904758, 7.49),
+        ],
+    ),
+    "Ca": Element(
+        "Calcium",
+        "Ca",
+        [
+            Isotope(40, 39.962591, 96.95),
+            Isotope(42, 41.958622, 0.65),
+            Isotope(43, 42.95877, 0.14),
+            Isotope(44, 43.955485, 2.086),
+            Isotope(46, 45.953689, 0.004),
+            Isotope(48, 47.952532, 0.19),
+        ],
+    ),
+    "C": Element("Carbon", "C", [Isotope(12, 12.0, 98.9), Isotope(13, 13.003355, 1.1)]),
+    "Ce": Element(
+        "Cerium",
+        "Ce",
+        [
+            Isotope(136, 135.90714, 0.19),
+            Isotope(138, 137.905996, 0.25),
+            Isotope(140, 139.905442, 88.48),
+            Isotope(142, 141.909249, 11.08),
+        ],
+    ),
+    "Cs": Element("Cesium", "Cs", [Isotope(133, 132.905433, 100.0)]),
+    "Cl": Element(
+        "Chlorine", "Cl", [Isotope(35, 34.968853, 75.77), Isotope(37, 36.965903, 24.23)]
+    ),
+    "Cr": Element(
+        "Chromium",
+        "Cr",
+        [
+            Isotope(50, 49.946046, 4.35),
+            Isotope(52, 51.94051, 83.79),
+            Isotope(53, 52.940651, 9.5),
+            Isotope(54, 53.938882, 2.36),
+        ],
+    ),
+    "Co": Element("Cobalt", "Co", [Isotope(59, 58.933198, 100.0)]),
+    "Cu": Element(
+        "Copper", "Cu", [Isotope(63, 62.929599, 69.17), Isotope(65, 64.927792, 30.83)]
+    ),
+    "Dy": Element(
+        "Dysprosium",
+        "Dy",
+        [
+            Isotope(156, 155.924287, 0.06),
+            Isotope(158, 157.924412, 0.1),
+            Isotope(160, 159.925203, 2.34),
+            Isotope(161, 160.926939, 18.9),
+            Isotope(162, 161.926805, 25.5),
+            Isotope(163, 162.928737, 24.9),
+            Isotope(164, 163.929183, 28.2),
+        ],
+    ),
+    "Er": Element(
+        "Erbium",
+        "Er",
+        [
+            Isotope(162, 161.928787, 0.14),
+            Isotope(164, 163.929211, 1.61),
+            Isotope(166, 165.930305, 33.6),
+            Isotope(167, 166.932061, 22.95),
+            Isotope(168, 167.932383, 26.8),
+            Isotope(170, 169.935476, 14.9),
+        ],
+    ),
+    "Eu": Element(
+        "Europium",
+        "Eu",
+        [Isotope(151, 150.91986, 47.8), Isotope(153, 152.921243, 52.2)],
+    ),
+    "F": Element("Fluorine", "F", [Isotope(19, 18.998403, 100.0)]),
+    "Gd": Element(
+        "Gadolinium",
+        "Gd",
+        [
+            Isotope(152, 151.919803, 0.2),
+            Isotope(154, 153.920876, 2.18),
+            Isotope(155, 154.822629, 14.8),
+            Isotope(156, 155.92213, 20.47),
+            Isotope(157, 156.923967, 15.65),
+            Isotope(158, 157.924111, 24.84),
+            Isotope(160, 159.927061, 21.86),
+        ],
+    ),
+    "Ga": Element(
+        "Gallium", "Ga", [Isotope(69, 68.925581, 60.1), Isotope(71, 70.924701, 39.9)]
+    ),
+    "Ge": Element(
+        "Germanium",
+        "Ge",
+        [
+            Isotope(70, 69.92425, 20.5),
+            Isotope(72, 71.92208, 27.4),
+            Isotope(73, 72.923464, 7.8),
+            Isotope(74, 73.921179, 36.5),
+            Isotope(76, 75.921403, 7.8),
+        ],
+    ),
+    "Au": Element("Gold", "Au", [Isotope(197, 196.96656, 100.0)]),
+    "Hf": Element(
+        "Hafnium",
+        "Hf",
+        [
+            Isotope(174, 173.940065, 0.16),
+            Isotope(176, 175.94142, 5.2),
+            Isotope(177, 176.943233, 18.6),
+            Isotope(178, 177.94371, 27.1),
+            Isotope(179, 178.945827, 13.74),
+            Isotope(180, 179.946561, 35.2),
+        ],
+    ),
+    "He": Element(
+        "Helium", "He", [Isotope(3, 3.016029, 0.0001), Isotope(4, 4.002603, 100.0)]
+    ),
+    "Ho": Element("Holmium", "Ho", [Isotope(165, 164.930332, 100.0)]),
+    "H": Element(
+        "Hydrogen", "H", [Isotope(1, 1.007825, 99.99), Isotope(2, 2.014102, 0.015)]
+    ),
+    "In": Element(
+        "Indium", "In", [Isotope(113, 112.904056, 4.3), Isotope(115, 114.903875, 95.7)]
+    ),
+    "I": Element("Iodine", "I", [Isotope(127, 126.904477, 100.0)]),
+    "Ir": Element(
+        "Iridium",
+        "Ir",
+        [Isotope(191, 190.960603, 37.3), Isotope(193, 192.962942, 62.7)],
+    ),
+    "Fe": Element(
+        "Iron",
+        "Fe",
+        [
+            Isotope(54, 53.939612, 5.8),
+            Isotope(56, 55.934939, 91.72),
+            Isotope(57, 56.935396, 2.2),
+            Isotope(58, 57.933278, 0.28),
+        ],
+    ),
+    "Kr": Element(
+        "Krypton",
+        "Kr",
+        [
+            Isotope(78, 77.920397, 0.35),
+            Isotope(80, 79.916375, 2.25),
+            Isotope(82, 81.913483, 11.6),
+            Isotope(83, 82.914134, 11.5),
+            Isotope(84, 83.911506, 57.0),
+            Isotope(86, 85.910614, 17.3),
+        ],
+    ),
+    "La": Element(
+        "Lanthanum",
+        "La",
+        [Isotope(138, 137.907114, 0.09), Isotope(139, 138.906355, 99.91)],
+    ),
+    "Pb": Element(
+        "Lead",
+        "Pb",
+        [
+            Isotope(204, 203.973037, 1.4),
+            Isotope(206, 205.974455, 24.1),
+            Isotope(207, 206.975885, 22.1),
+            Isotope(208, 207.976641, 52.4),
+        ],
+    ),
+    "Li": Element(
+        "Lithium", "Li", [Isotope(6, 6.015123, 7.42), Isotope(7, 7.016005, 92.58)]
+    ),
+    "Lu": Element(
+        "Lutetium",
+        "Lu",
+        [Isotope(175, 174.940785, 97.4), Isotope(176, 175.942694, 2.6)],
+    ),
+    "Mg": Element(
+        "Magnesium",
+        "Mg",
+        [
+            Isotope(24, 23.985045, 78.9),
+            Isotope(25, 24.985839, 10.0),
+            Isotope(26, 25.982595, 11.1),
+        ],
+    ),
+    "Mn": Element("Manganese", "Mn", [Isotope(55, 54.938046, 100.0)]),
+    "Hg": Element(
+        "Mercury",
+        "Hg",
+        [
+            Isotope(196, 195.965812, 0.15),
+            Isotope(198, 197.96676, 10.1),
+            Isotope(199, 198.968269, 17.0),
+            Isotope(200, 199.968316, 23.1),
+            Isotope(201, 200.970293, 13.2),
+            Isotope(202, 201.970632, 29.65),
+            Isotope(204, 203.973481, 6.8),
+        ],
+    ),
+    "Mo": Element(
+        "Molybdenum",
+        "Mo",
+        [
+            Isotope(100, 99.907473, 9.63),
+            Isotope(92, 91.906809, 14.84),
+            Isotope(94, 93.905086, 9.25),
+            Isotope(95, 94.905838, 15.92),
+            Isotope(96, 95.904676, 16.68),
+            Isotope(97, 96.906018, 9.55),
+            Isotope(98, 97.905405, 24.13),
+        ],
+    ),
+    "Nd": Element(
+        "Neodymium",
+        "Nd",
+        [
+            Isotope(142, 141.907731, 27.13),
+            Isotope(143, 142.909823, 12.18),
+            Isotope(144, 143.910096, 23.8),
+            Isotope(145, 144.912582, 8.3),
+            Isotope(146, 145.913126, 17.19),
+            Isotope(148, 147.916901, 5.76),
+            Isotope(150, 149.9209, 5.64),
+        ],
+    ),
+    "Ne": Element(
+        "Neon",
+        "Ne",
+        [
+            Isotope(20, 19.992439, 90.6),
+            Isotope(21, 20.993845, 0.26),
+            Isotope(22, 21.991384, 9.2),
+        ],
+    ),
+    "Ni": Element(
+        "Nickel",
+        "Ni",
+        [
+            Isotope(58, 57.935347, 68.27),
+            Isotope(60, 59.930789, 26.1),
+            Isotope(61, 60.931059, 1.13),
+            Isotope(62, 61.928346, 3.59),
+            Isotope(64, 63.927968, 0.91),
+        ],
+    ),
+    "Nb": Element("Niobium", "Nb", [Isotope(93, 92.906378, 100.0)]),
+    "N": Element(
+        "Nitrogen", "N", [Isotope(14, 14.003074, 99.63), Isotope(15, 15.000109, 0.37)]
+    ),
+    "Os": Element(
+        "Osmium",
+        "Os",
+        [
+            Isotope(184, 183.952514, 0.02),
+            Isotope(186, 185.953852, 1.58),
+            Isotope(187, 186.955762, 1.6),
+            Isotope(188, 187.95585, 13.3),
+            Isotope(189, 188.958156, 16.1),
+            Isotope(190, 189.958455, 26.4),
+            Isotope(192, 191.961487, 41.0),
+        ],
+    ),
+    "O": Element(
+        "Oxygen",
+        "O",
+        [
+            Isotope(16, 15.994915, 99.76),
+            Isotope(17, 16.999131, 0.038),
+            Isotope(18, 17.999159, 0.2),
+        ],
+    ),
+    "Pd": Element(
+        "Palladium",
+        "Pd",
+        [
+            Isotope(102, 101.905609, 1.02),
+            Isotope(104, 103.904026, 11.14),
+            Isotope(105, 104.905075, 22.33),
+            Isotope(106, 105.903475, 27.33),
+            Isotope(108, 107.903894, 26.46),
+            Isotope(110, 109.905169, 11.72),
+        ],
+    ),
+    "P": Element("Phosphorus", "P", [Isotope(31, 30.973763, 100.0)]),
+    "Pt": Element(
+        "Platinum",
+        "Pt",
+        [
+            Isotope(190, 189.959937, 0.01),
+            Isotope(192, 191.961049, 0.79),
+            Isotope(194, 193.962679, 32.9),
+            Isotope(195, 194.964785, 33.8),
+            Isotope(196, 195.964947, 25.3),
+            Isotope(198, 197.967879, 7.2),
+        ],
+    ),
+    "K": Element(
+        "Potassium",
+        "K",
+        [
+            Isotope(39, 38.963708, 93.2),
+            Isotope(40, 39.963999, 0.012),
+            Isotope(41, 40.961825, 6.73),
+        ],
+    ),
+    "Pr": Element("Praseodymium", "Pr", [Isotope(141, 140.907657, 100.0)]),
+    "Re": Element(
+        "Rhenium",
+        "Re",
+        [Isotope(185, 184.952977, 37.4), Isotope(187, 186.955765, 62.6)],
+    ),
+    "Rh": Element("Rhodium", "Rh", [Isotope(103, 102.905503, 100.0)]),
+    "Rb": Element(
+        "Rubidium", "Rb", [Isotope(85, 84.9118, 72.17), Isotope(87, 86.909184, 27.84)]
+    ),
+    "Ru": Element(
+        "Ruthenium",
+        "Ru",
+        [
+            Isotope(100, 99.904218, 12.6),
+            Isotope(101, 100.905581, 17.0),
+            Isotope(102, 101.904348, 31.6),
+            Isotope(104, 103.905422, 18.7),
+            Isotope(96, 95.907596, 5.52),
+            Isotope(98, 97.905287, 1.88),
+            Isotope(99, 98.905937, 12.7),
+        ],
+    ),
+    "Sm": Element(
+        "Samarium",
+        "Sm",
+        [
+            Isotope(144, 143.912009, 3.1),
+            Isotope(147, 146.914907, 15.0),
+            Isotope(148, 147.914832, 11.3),
+            Isotope(149, 148.917193, 13.8),
+            Isotope(150, 149.917285, 7.4),
+            Isotope(152, 151.919741, 26.7),
+            Isotope(154, 153.922218, 22.7),
+        ],
+    ),
+    "Sc": Element("Scandium", "Sc", [Isotope(45, 44.955914, 100.0)]),
+    "Se": Element(
+        "Selenium",
+        "Se",
+        [
+            Isotope(74, 73.922477, 0.9),
+            Isotope(76, 75.919207, 9.0),
+            Isotope(77, 76.919908, 7.6),
+            Isotope(78, 77.917304, 23.5),
+            Isotope(80, 79.916521, 49.6),
+            Isotope(82, 81.916709, 9.4),
+        ],
+    ),
+    "Si": Element(
+        "Silicon",
+        "Si",
+        [
+            Isotope(28, 27.976928, 92.23),
+            Isotope(29, 28.976496, 4.67),
+            Isotope(30, 29.973772, 3.1),
+        ],
+    ),
+    "Ag": Element(
+        "Silver",
+        "Ag",
+        [Isotope(107, 106.905095, 51.84), Isotope(109, 108.904754, 48.16)],
+    ),
+    "Na": Element("Sodium", "Na", [Isotope(23, 22.98977, 100.0)]),
+    "Sr": Element(
+        "Strontium",
+        "Sr",
+        [
+            Isotope(84, 83.913428, 0.56),
+            Isotope(86, 85.909273, 9.86),
+            Isotope(87, 86.908902, 7.0),
+            Isotope(88, 87.905625, 82.58),
+        ],
+    ),
+    "S": Element(
+        "Sulfur",
+        "S",
+        [
+            Isotope(32, 31.972072, 95.02),
+            Isotope(33, 32.971459, 0.75),
+            Isotope(34, 33.967868, 4.21),
+            Isotope(36, 35.967079, 0.02),
+        ],
+    ),
+    "Ta": Element(
+        "Tantalum",
+        "Ta",
+        [Isotope(180, 179.947489, 0.012), Isotope(181, 180.948014, 99.99)],
+    ),
+    "Te": Element(
+        "Tellurium",
+        "Te",
+        [
+            Isotope(120, 119.904021, 0.096),
+            Isotope(122, 121.903055, 2.6),
+            Isotope(123, 122.904278, 0.91),
+            Isotope(124, 123.902825, 4.82),
+            Isotope(125, 124.904435, 7.14),
+            Isotope(126, 125.90331, 18.95),
+            Isotope(128, 127.904464, 31.69),
+            Isotope(130, 129.906229, 33.8),
+        ],
+    ),
+    "Tb": Element("Terbium", "Tb", [Isotope(159, 158.92535, 100.0)]),
+    "Tl": Element(
+        "Thallium",
+        "Tl",
+        [Isotope(203, 202.972336, 29.52), Isotope(205, 204.97441, 70.48)],
+    ),
+    "Th": Element("Thorium", "Th", [Isotope(232, 232.038054, 100.0)]),
+    "Tm": Element("Thulium", "Tm", [Isotope(169, 168.934225, 100.0)]),
+    "Sn": Element(
+        "Tin",
+        "Sn",
+        [
+            Isotope(112, 111.904826, 0.97),
+            Isotope(114, 113.902784, 0.65),
+            Isotope(115, 114.903348, 0.36),
+            Isotope(116, 115.901744, 14.7),
+            Isotope(117, 116.902954, 7.7),
+            Isotope(118, 117.901607, 24.3),
+            Isotope(119, 118.90331, 8.6),
+            Isotope(120, 119.902199, 32.4),
+            Isotope(122, 121.90344, 4.6),
+            Isotope(124, 123.905271, 5.6),
+        ],
+    ),
+    "Ti": Element(
+        "Titanium",
+        "Ti",
+        [
+            Isotope(46, 45.952633, 8.0),
+            Isotope(47, 46.951765, 7.3),
+            Isotope(48, 47.947947, 73.8),
+            Isotope(49, 48.947871, 5.5),
+            Isotope(50, 49.944786, 5.4),
+        ],
+    ),
+    "W": Element(
+        "Tungsten",
+        "W",
+        [
+            Isotope(180, 179.946727, 0.13),
+            Isotope(182, 181.948225, 26.3),
+            Isotope(183, 182.950245, 14.3),
+            Isotope(184, 183.950953, 30.67),
+            Isotope(186, 185.954377, 28.6),
+        ],
+    ),
+    "U": Element(
+        "Uranium",
+        "U",
+        [
+            Isotope(234, 234.040947, 0.006),
+            Isotope(235, 235.043925, 0.72),
+            Isotope(238, 238.050786, 99.27),
+        ],
+    ),
+    "V": Element(
+        "Vanadium", "V", [Isotope(50, 49.947161, 0.25), Isotope(51, 50.943963, 99.75)]
+    ),
+    "Xe": Element(
+        "Xenon",
+        "Xe",
+        [
+            Isotope(124, 123.905894, 0.1),
+            Isotope(126, 125.904281, 0.09),
+            Isotope(128, 127.903531, 1.91),
+            Isotope(129, 128.90478, 26.4),
+            Isotope(130, 129.90351, 4.1),
+            Isotope(131, 130.905076, 21.2),
+            Isotope(132, 131.904148, 26.9),
+            Isotope(134, 133.905395, 10.4),
+            Isotope(136, 135.907219, 8.9),
+        ],
+    ),
+    "Yb": Element(
+        "Ytterbium",
+        "Yb",
+        [
+            Isotope(168, 167.933908, 0.13),
+            Isotope(170, 169.934774, 3.05),
+            Isotope(171, 170.936338, 14.3),
+            Isotope(172, 171.936393, 21.9),
+            Isotope(173, 172.938222, 16.12),
+            Isotope(174, 173.938873, 31.8),
+            Isotope(176, 175.942576, 12.7),
+        ],
+    ),
+    "Y": Element("Yttrium", "Y", [Isotope(89, 88.905856, 100.0)]),
+    "Zn": Element(
+        "Zinc",
+        "Zn",
+        [
+            Isotope(64, 63.929145, 48.6),
+            Isotope(66, 65.926035, 27.9),
+            Isotope(67, 66.927129, 4.1),
+            Isotope(68, 67.924846, 18.8),
+            Isotope(70, 69.925325, 0.6),
+        ],
+    ),
+    "Zr": Element(
+        "Zirconium",
+        "Zr",
+        [
+            Isotope(90, 89.904708, 51.45),
+            Isotope(91, 90.905644, 11.27),
+            Isotope(92, 91.905039, 17.17),
+            Isotope(94, 93.906319, 17.33),
+            Isotope(96, 95.908272, 2.78),
+        ],
+    ),
+}
