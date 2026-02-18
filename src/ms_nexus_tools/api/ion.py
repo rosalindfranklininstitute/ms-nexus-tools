@@ -18,25 +18,66 @@ from nexusformat.nexus.tree import (
 )
 
 from ..lib import Timer, time_this, chunking
-
-from icecream import ic
+from .api import arg_field, ArgType
 
 
 @dataclass
 class ProcessArgs:
-    hdf_in_path: Path
-    hdf_out_path: Path
+    hdf_in_path: Path = arg_field(
+        "-i",
+        "--input",
+        required=True,
+        arg_type=ArgType.EXPLICIT_ONLY,
+        doc="The input file.",
+    )
+    hdf_out_path: Path = arg_field(
+        "-o",
+        "--output",
+        required=True,
+        arg_type=ArgType.EXPLICIT_ONLY,
+        doc="The output file.",
+    )
+    tmp_data_path: Path = arg_field(
+        default=Path("./tmp_data"),
+        doc="The folder used to store intermediary files used in processing. This can be used for resuming interupted runns, if not overridden.",
+    )
 
-    chunk_count: int
-    chunk_memory: float | None
+    chunk_count: int = arg_field(
+        "-k", default=1, doc="How many intermediate chunks to use."
+    )
+    max_memory: float = arg_field(
+        "-m",
+        default=None,
+        doc="The maximum memory a chunk should take, in Gb.",
+    )
 
-    processors: int
+    processors: int = arg_field(
+        "-j",
+        default=1,
+        doc="Process the data using sub-processors on disk using this many processors. If 1 it does not chunk onto disk, but remains in memory.",
+    )
+    on_disk: bool = arg_field(
+        action="store_true",
+        doc="If present will store intermediate chunks to the temp_data_path folder. Useful for resuming or when using multiple processors.",
+    )
 
-    compression: str
-    compression_level: int
+    compression: str = arg_field(
+        doc="The type of compression to use, if any.", default="gzip"
+    )
+    compression_level: int = arg_field(
+        doc="The level of compression to use, if appropriate.", default=4
+    )
 
-    do_spectra: bool
-    do_mass_images: bool
+    do_spectra: bool = arg_field(
+        "--no-spectra",
+        action="store_false",
+        doc="If present, will not process the spectra part of the input file.",
+    )
+    do_images: bool = arg_field(
+        "--no-images",
+        action="store_false",
+        doc="If present, will not process the images part of the input file.",
+    )
 
 
 @dataclass
@@ -69,15 +110,13 @@ class IONImageBounds(chunking.ImageBounds):
 @dataclass
 class SubprocessArgs:
     id: int
-    hdf_in_file: Path
+    vds_in: Path
     data_path: str
     chunk: chunking.ChunkBounds
-    hdf_out_file: Path
-
-    image_paths: IONImageBounds
+    hdf_out: Path
 
 
-def assign_data_vds(args: SubprocessArgs):
+def process_chunk_on_disk(args: SubprocessArgs):
     if len(args.chunk.layer_range()) == 0 or len(args.chunk.spectra_range()) == 0:
         return
 
@@ -85,7 +124,7 @@ def assign_data_vds(args: SubprocessArgs):
     process = NXprocess()
     process.attrs["name"] = "collect masses"
     process.input = NXparameters(
-        hdf_in_file=args.hdf_in_file,
+        hdf_in_file=args.vds_in,
     )
     entry["process"] = process
 
@@ -100,7 +139,7 @@ def assign_data_vds(args: SubprocessArgs):
             ],
         )
 
-        with h5.File(args.hdf_in_file, "r") as hdf:
+        with h5.File(args.vds_in, "r") as hdf:
             entry.data[:, :, :, :] = hdf[args.data_path][
                 args.chunk.layer,
                 args.chunk.width,
@@ -111,7 +150,24 @@ def assign_data_vds(args: SubprocessArgs):
         print(args.chunk, flush=True)
         raise
 
-    entry.save(args.hdf_out_file)
+    entry.save(args.hdf_out)
+
+
+@dataclass
+class ThreadArgs:
+    id: int
+    vds_in: h5.File
+    data_path: str
+    chunk: chunking.ChunkBounds
+    hdf_out: NXdata
+
+
+def process_chunk_in_memory(args: ThreadArgs):
+    args.hdf_out.signal[
+        args.chunk.layer, args.chunk.width, args.chunk.height, args.chunk.spectra
+    ] = args.vds_in[args.data_path,][
+        args.chunk.layer, args.chunk.width, args.chunk.height, args.chunk.spectra
+    ]
 
 
 def process_metadata(
@@ -203,30 +259,32 @@ def process_field_in_memory(
 
 def process_field_on_disk(
     data: NXdata,
-    bounds: IONImageBounds,
     processors: int,
     hdf_vds_path: Path,
     field_name: str,
     chunks: list[chunking.ChunkBounds],
+    tmp_data_path: Path,
 ):
     with Timer(field_name, interval=30):
         chunked_bins: list[SubprocessArgs] = [
             SubprocessArgs(
                 id=i,
-                hdf_in_file=hdf_vds_path,
+                vds_in=hdf_vds_path,
                 data_path=field_name,
                 chunk=chunk,
-                hdf_out_file=Path(f"./tmp_data/Chunked_{field_name}_{i}.nxs"),
-                image_paths=bounds,
+                hdf_out=tmp_data_path.joinpath(f"Chunked_{field_name}_{i}.nxs"),
             )
             for i, chunk in enumerate(chunks)
         ]
         with Pool(processors) as p:
-            p.map(assign_data_vds, chunked_bins)
+            print(
+                f" Begining chunking: {len(chunked_bins)} chunks over {processors} processors."
+            )
+            p.map(process_chunk_on_disk, chunked_bins)
 
         for ii, chunk_args in enumerate(chunked_bins):
-            if chunk_args.hdf_out_file.exists():
-                chunk_root = nxload(chunk_args.hdf_out_file)
+            if chunk_args.hdf_out.exists():
+                chunk_root = nxload(chunk_args.hdf_out)
                 chunk = chunk_args.chunk
                 data.signal[
                     chunk.layer,
@@ -239,12 +297,13 @@ def process_field_on_disk(
 
 
 def process(args: ProcessArgs):
+
     with time_this("Overall"):
         hdf_out_path = args.hdf_out_path
 
-        if os.path.exists("./tmp_data"):
-            shutil.rmtree("./tmp_data")
-        os.makedirs("./tmp_data")
+        if os.path.exists(args.tmp_data_path):
+            shutil.rmtree(args.tmp_data_path)
+        os.makedirs(args.tmp_data_path)
 
         entry = NXentry()
         if os.path.exists(hdf_out_path):
@@ -255,9 +314,8 @@ def process(args: ProcessArgs):
             entry["instrument"], bounds, axis = process_metadata(args.hdf_in_path)
 
         spectra_chunks, image_chunks, memory_info = chunking.calculate_chunks(
-            args.chunk_count, args.chunk_memory, args.processors, bounds
+            args.chunk_count, args.max_memory, args.processors, bounds
         )
-        ic(memory_info)
 
         entry["spectra"] = NXsubentry(
             NXdata(
@@ -285,23 +343,23 @@ def process(args: ProcessArgs):
 
         entry["data"] = NXlinkfield("entry/spectra/data")
         with time_this("VDS"):
-            hdf_vds_path = Path("./tmp_data/vds.h5")
+            hdf_vds_path = args.tmp_data_path.joinpath("vds.h5")
             if args.do_spectra:
                 create_spectra_vds(hdf_vds_path, args.hdf_in_path, bounds, append=False)
-            if args.do_mass_images:
+            if args.do_images:
                 create_image_vds(
                     hdf_vds_path, args.hdf_in_path, bounds, append=args.do_spectra
                 )
 
         with h5.File(args.hdf_in_path, "r"):
             with h5.File(hdf_vds_path, "r") as vds:
-                if args.processors == 1:
+                if not args.on_disk:
                     if args.do_spectra:
                         process_field_in_memory(
                             entry.spectra.data, vds, "spectra", spectra_chunks
                         )
 
-                    if args.do_mass_images:
+                    if args.do_images:
                         process_field_in_memory(
                             entry.mass_images.data, vds, "mass_images", image_chunks
                         )
@@ -309,19 +367,19 @@ def process(args: ProcessArgs):
                     if args.do_spectra:
                         process_field_on_disk(
                             entry.spectra.data,
-                            bounds,
                             args.processors,
                             hdf_vds_path,
                             "spectra",
                             spectra_chunks,
+                            args.tmp_data_path,
                         )
 
-                    if args.do_mass_images:
+                    if args.do_images:
                         process_field_on_disk(
                             entry.mass_images.data,
-                            bounds,
                             args.processors,
                             hdf_vds_path,
                             "mass_images",
                             image_chunks,
+                            args.tmp_data_path,
                         )

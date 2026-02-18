@@ -2,8 +2,6 @@ import argparse
 import csv
 from typing import NamedTuple
 
-from icecream import ic
-
 
 class Isotope(NamedTuple):
     nominal: int
