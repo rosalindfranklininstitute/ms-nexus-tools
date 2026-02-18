@@ -1,3 +1,4 @@
+from typing import Self
 import argparse
 import csv
 from typing import NamedTuple
@@ -8,6 +9,9 @@ class Isotope(NamedTuple):
     accurate: float
     abundance: float
 
+    def __lt__(self, other: Self) -> bool:
+        return self.accurate < other.accurate
+
 
 class Element(NamedTuple):
     name: str
@@ -16,7 +20,9 @@ class Element(NamedTuple):
 
 
 def element_to_str(element: Element):
-    isotope_strings = [f"Isotope({i[0]},{i[1]},{i[2]})" for i in element.isotopes]
+    isotope_strings = [
+        f"Isotope({i[0]},{i[1]},{i[2]})" for i in sorted(element.isotopes)
+    ]
     return (
         f'Element("{element.name}", "{element.symbol}", [{",".join(isotope_strings)}])'
     )

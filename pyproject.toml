@@ -15,6 +15,7 @@ dependencies = [
     "nexusformat>=2.0.1",
     "numpy>=2.4.2",
     "pytest>=9.0.2",
+    "scipy>=1.17.0",
     "snakeviz>=2.2.2",
 ]
 license = "Apache-2.0"
@@ -23,6 +24,7 @@ license-files = ["LICENSES/*"]
 [project.scripts]
 ion2rfi = "ms_nexus_tools:ion2rfi"
 profile = "ms_nexus_tools:profile"
+compound = "ms_nexus_tools:compound"
 
 [build-system]
 requires = ["uv_build>=0.10.0,<0.11.0"]

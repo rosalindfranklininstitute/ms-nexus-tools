@@ -73,7 +73,9 @@ def add_argument(parser: argparse.ArgumentParser, fld: Field):
         kw_args.update(fld.metadata)
         del kw_args["args"]
         del kw_args["arg_type"]
-        kw_args["dest"] = fld.name
+
+        if fld.metadata["arg_type"] != ArgType.POSITIONAL:
+            kw_args["dest"] = fld.name
 
         if fld.default != MISSING:
             kw_args["default"] = fld.default

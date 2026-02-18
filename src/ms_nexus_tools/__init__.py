@@ -7,6 +7,7 @@ import cProfile
 from . import lib as lib
 from . import api as api
 from .cli.ion2rfi import ion2rfi
+from .cli.compound import compound
 
 
 def main() -> None:

@@ -120,6 +120,7 @@ dependencies = [
     { name = "nexusformat" },
     { name = "numpy" },
     { name = "pytest" },
+    { name = "scipy" },
     { name = "snakeviz" },
 ]
 
@@ -131,6 +132,7 @@ requires-dist = [
     { name = "nexusformat", specifier = ">=2.0.1" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "pytest", specifier = ">=9.0.2" },
+    { name = "scipy", specifier = ">=1.17.0" },
     { name = "snakeviz", specifier = ">=2.2.2" },
 ]
 
