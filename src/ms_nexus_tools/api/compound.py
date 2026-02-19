@@ -1,8 +1,6 @@
 import re
 from dataclasses import dataclass
 
-import scipy
-
 from .api import arg_field, ArgType
 from ..lib import elements
 

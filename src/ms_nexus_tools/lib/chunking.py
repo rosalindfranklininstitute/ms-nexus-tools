@@ -1,5 +1,15 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
+from pathlib import Path
+
+import h5py as h5
+
+from nexusformat.nexus import NXfield, NXdata
+from nexusformat.nexus.tree import (
+    NXentry,
+    NXprocess,
+    NXparameters,
+)
 
 from .utils import count_digits
 
@@ -10,8 +20,15 @@ class ImageBounds:
     layer_width: int
     layer_height: int
     spectrum_length: int
+    shape: tuple[int, int, int, int] = field(init=False)
 
     def __post_init__(self):
+        self.shape = (
+            self.layer_count,
+            self.layer_width,
+            self.layer_height,
+            self.spectrum_length,
+        )
         self._layer_count_digits = count_digits(self.layer_count)
         self._layer_width_digits = count_digits(self.layer_width)
         self._layer_height_digits = count_digits(self.layer_height)
@@ -74,6 +91,18 @@ class ChunkBounds:
 
     def spectra_range(self) -> range:
         return range(self.spectra.start, self.spectra.stop)
+
+    def to_bound_dict(self) -> dict[str, int]:
+        return dict(
+            layer_start=self.layer.start,
+            layer_stop=self.layer.stop,
+            width_stat=self.width.start,
+            width_stop=self.width.stop,
+            height_stat=self.height.start,
+            height_stop=self.height.stop,
+            spectra_stat=self.spectra.start,
+            spectra_stop=self.spectra.stop,
+        )
 
 
 @dataclass
@@ -240,3 +269,69 @@ def calculate_chunks(
     )
 
     return spectra_chunks, image_chunks, memory_info
+
+
+@dataclass
+class OnDiskArgs:
+    id: int
+    vds_in: Path
+    data_path: str
+    chunk: chunking.ChunkBounds
+    hdf_out: Path
+
+
+def process_chunk_on_disk(args: OnDiskArgs):
+    if len(args.chunk.layer_range()) == 0 or len(args.chunk.spectra_range()) == 0:
+        return
+
+    entry = NXentry()
+    process = NXprocess()
+    process.attrs["name"] = "collect {args.data_path}"
+    process.input = NXparameters(
+        hdf_in_file=args.vds_in,
+        id=args.id,
+        data_path=args.data_path,
+        **args.chunk.to_bound_dict(),
+    )
+    entry["process"] = process
+
+    try:
+        entry["data"] = NXfield(
+            dtype="int32",
+            shape=[
+                args.chunk.layer_count(),
+                args.chunk.layer_width(),
+                args.chunk.layer_height(),
+                args.chunk.spectrum_length(),
+            ],
+        )
+
+        with h5.File(args.vds_in, "r") as hdf:
+            entry.data[:, :, :, :] = hdf[args.data_path][
+                args.chunk.layer,
+                args.chunk.width,
+                args.chunk.height,
+                args.chunk.spectra,
+            ]
+    except:
+        print(args.chunk, flush=True)
+        raise
+
+    entry.save(args.hdf_out)
+
+
+@dataclass
+class InMemoryArgs:
+    id: int
+    vds_in: h5.File
+    data_path: str
+    chunk: ChunkBounds
+    hdf_out: NXdata
+
+
+def process_chunk_in_memory(args: InMemoryArgs):
+    args.hdf_out.signal[
+        args.chunk.layer, args.chunk.width, args.chunk.height, args.chunk.spectra
+    ] = args.vds_in[args.data_path][
+        args.chunk.layer, args.chunk.width, args.chunk.height, args.chunk.spectra
+    ]

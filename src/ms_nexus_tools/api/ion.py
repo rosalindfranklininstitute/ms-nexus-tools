@@ -2,7 +2,9 @@ from dataclasses import dataclass
 import os
 import shutil
 from pathlib import Path
-from multiprocessing import Pool
+from multiprocessing import JoinableQueue as mQueue, Process
+from threading import Thread
+from queue import Queue as tQueue
 
 import numpy as np
 import h5py as h5
@@ -13,12 +15,21 @@ from nexusformat.nexus.tree import (
     NXlinkfield,
     NXsubentry,
     NXinstrument,
-    NXprocess,
-    NXparameters,
 )
 
-from ..lib import Timer, time_this, chunking
+from ..lib import Timer, time_this
+from ..lib.chunking import (
+    ImageBounds,
+    ChunkBounds,
+    calculate_chunks,
+    OnDiskArgs,
+    InMemoryArgs,
+    process_chunk_on_disk,
+    process_chunk_in_memory,
+)
 from .api import arg_field, ArgType
+
+timer_interval = 30
 
 
 @dataclass
@@ -60,6 +71,10 @@ class ProcessArgs:
         action="store_true",
         doc="If present will store intermediate chunks to the temp_data_path folder. Useful for resuming or when using multiple processors.",
     )
+    use_subprocesses: bool = arg_field(
+        action="store_true",
+        doc="If present will use subprocesses instead of threads.",
+    )
 
     compression: str = arg_field(
         doc="The type of compression to use, if any.", default="gzip"
@@ -91,86 +106,91 @@ class ImageAxis:
         return [self.layer_axis, self.x_axis, self.y_axis, self.mass_axis]
 
 
-class IONImageBounds(chunking.ImageBounds):
+class IONImageBounds(ImageBounds):
     def spectrum_path(self, layer: int, w: int, h: int) -> str:
         return f"/Spectra/Layer{layer + 1:0{self._layer_count_digits}}/Pixel{w:0{self._layer_width_digits}},{h:0{self._layer_height_digits}}"
 
-    def mass_image_path(self, layer: int, bin: int) -> str:
+    def image_path(self, layer: int, bin: int) -> str:
         return f"/MassImages/Layer{layer + 1:0{self._layer_count_digits}}/Bin{bin:0{self._spectrum_length_digits}}"
 
-    def shape(self) -> tuple[int, int, int, int]:
-        return (
-            self.layer_count,
-            self.layer_width,
-            self.layer_height,
-            self.spectrum_length,
-        )
 
+def write_metadata(
+    hdf_out_path: Path,
+    instrument: NXinstrument,
+    image_bounds: IONImageBounds,
+    image_axis: ImageAxis,
+    append: bool = False,
+) -> None:
+    with h5.File(hdf_out_path, "a" if append else "w") as hdf:
+        metadata = hdf.require_group("ExperimentDetails").attrs
 
-@dataclass
-class SubprocessArgs:
-    id: int
-    vds_in: Path
-    data_path: str
-    chunk: chunking.ChunkBounds
-    hdf_out: Path
+        def assign_or_assert(value, name):
+            if name in metadata:
+                assert metadata[name][0] == value
+            else:
+                metadata[name] = [value]
 
+        for key, value in instrument.items():
+            metadata.attrs[key] = value
+        assign_or_assert(image_bounds.layer_height, "LayerDimensionX")
+        assign_or_assert(image_bounds.layer_width, "LayerDimensionY")
+        assign_or_assert(image_bounds.layer_height, "LayerDimensionX")
+        assign_or_assert(image_bounds.layer_width, "LayerDimensionY")
+        assign_or_assert(image_bounds.layer_count, "Layers")
+        assign_or_assert(image_bounds.spectrum_length, "SpectrumLength")
 
-def process_chunk_on_disk(args: SubprocessArgs):
-    if len(args.chunk.layer_range()) == 0 or len(args.chunk.spectra_range()) == 0:
-        return
+        assign_or_assert(image_axis.x_axis[1], "ImageMicronsX")
+        assign_or_assert(image_axis.y_axis[1], "ImageMicronsY")
 
-    entry = NXentry()
-    process = NXprocess()
-    process.attrs["name"] = "collect masses"
-    process.input = NXparameters(
-        hdf_in_file=args.vds_in,
-    )
-    entry["process"] = process
-
-    try:
-        entry["data"] = NXfield(
+        hdf.require_dataset(
+            "ExperimentDetails/MassArray",
             dtype="int32",
-            shape=[
-                args.chunk.layer_count(),
-                args.chunk.layer_width(),
-                args.chunk.layer_height(),
-                args.chunk.spectrum_length(),
-            ],
+            shape=(1, image_bounds.spectrum_length),
+            data=image_axis.mass_axis[:],
+            exact=True,
         )
 
-        with h5.File(args.vds_in, "r") as hdf:
-            entry.data[:, :, :, :] = hdf[args.data_path][
-                args.chunk.layer,
-                args.chunk.width,
-                args.chunk.height,
-                args.chunk.spectra,
-            ]
-    except:
-        print(args.chunk, flush=True)
-        raise
 
-    entry.save(args.hdf_out)
-
-
-@dataclass
-class ThreadArgs:
-    id: int
-    vds_in: h5.File
-    data_path: str
-    chunk: chunking.ChunkBounds
-    hdf_out: NXdata
+def write_spectrum(
+    hdf_out_path: Path,
+    bounds: IONImageBounds,
+    data: np.ndarray,
+    append: bool = True,
+) -> None:
+    assert data.shape == bounds.shape
+    with h5.File(hdf_out_path, "a" if append else "w") as hdf:
+        for ll in range(bounds.layer_count):
+            for ww in range(bounds.layer_width):
+                for hh in range(bounds.layer_height):
+                    hdf.require_dataset(
+                        bounds.spectrum_path(ll, ww, hh),
+                        dtype="int32",
+                        shape=(1, bounds.spectrum_length),
+                        data=data[ll, ww, hh, :],
+                        exact=True,
+                    )
 
 
-def process_chunk_in_memory(args: ThreadArgs):
-    args.hdf_out.signal[
-        args.chunk.layer, args.chunk.width, args.chunk.height, args.chunk.spectra
-    ] = args.vds_in[args.data_path,][
-        args.chunk.layer, args.chunk.width, args.chunk.height, args.chunk.spectra
-    ]
+def write_image(
+    hdf_out_path: Path,
+    bounds: IONImageBounds,
+    data: np.ndarray,
+    append: bool = True,
+) -> None:
+    assert data.shape == bounds.shape
+    with h5.File(hdf_out_path, "a" if append else "w") as hdf:
+        for ll in range(bounds.layer_count):
+            for ss in range(bounds.spectrum_length):
+                hdf.require_dataset(
+                    bounds.image_path(ll, ss),
+                    dtype="int32",
+                    shape=(bounds.layer_width, bounds.layer_height),
+                    data=data[ll, :, :, ss],
+                    exact=True,
+                )
 
 
-def process_metadata(
+def read_metadata(
     hdf_in_path: Path,
 ) -> tuple[NXinstrument, IONImageBounds, ImageAxis]:
     with h5.File(hdf_in_path, "r") as hdfinfile:
@@ -206,14 +226,14 @@ def process_metadata(
 
 
 def create_spectra_vds(
-    hdf_vds_path: Path,
     hdf_in_path: Path,
+    hdf_vds_path: Path,
     bounds: IONImageBounds,
     append: bool = True,
 ):
     with h5.File(hdf_vds_path, "a" if append else "w") as vds:
         spectra_layout = h5.VirtualLayout(
-            shape=bounds.shape(),
+            shape=bounds.shape,
             dtype="int32",
         )
         for layer in range(bounds.layer_count):
@@ -227,66 +247,96 @@ def create_spectra_vds(
 
 
 def create_image_vds(
-    hdf_vds_path: Path, hdf_in_path: Path, bounds: IONImageBounds, append: bool = True
+    hdf_in_path: Path, hdf_vds_path: Path, bounds: IONImageBounds, append: bool = True
 ):
     with h5.File(hdf_vds_path, "a" if append else "w") as vds:
         mass_layout = h5.VirtualLayout(
-            shape=bounds.shape(),
+            shape=bounds.shape,
             dtype="int32",
         )
         for layer in range(bounds.layer_count):
             for bin in range(bounds.spectrum_length):
-                path = bounds.mass_image_path(layer, bin)
+                path = bounds.image_path(layer, bin)
                 mass_layout[layer, :, :, bin] = h5.VirtualSource(
                     hdf_in_path,
                     path,
                     shape=(bounds.layer_width, bounds.layer_height),
                 )
-        vds.create_virtual_dataset("mass_images", mass_layout, fillvalue=0)
+        vds.create_virtual_dataset("images", mass_layout, fillvalue=0)
 
 
-def process_field_in_memory(
-    data: NXdata, vds: h5.File, field_name: str, chunks: list[chunking.ChunkBounds]
-):
-    chunk_count = len(chunks)
-    with Timer(field_name, interval=30, total=chunk_count, skip_percent=5) as tmr:
-        for ii, chunk in enumerate(chunks):
-            data.signal[chunk.layer, chunk.width, chunk.height, chunk.spectra] = vds[
-                field_name
-            ][chunk.layer, chunk.width, chunk.height, chunk.spectra]
-            tmr.report(ii)
+def queue_consumer(ii: int, function, queue: mQueue | tQueue):
+    for args in iter(queue.get, "STOP"):
+        function(args)
+        queue.task_done()
+    print(f"Queue consumer {ii + 1} finishing.")
 
 
-def process_field_on_disk(
-    data: NXdata,
-    processors: int,
+def process_chunks_on_disk(
+    chunks: list[ChunkBounds],
+    data_path: str,
+    use_subprocesses: bool,
     hdf_vds_path: Path,
-    field_name: str,
-    chunks: list[chunking.ChunkBounds],
     tmp_data_path: Path,
+    hdf_out: NXdata,
+    processes: int,
 ):
-    with Timer(field_name, interval=30):
-        chunked_bins: list[SubprocessArgs] = [
-            SubprocessArgs(
-                id=i,
-                vds_in=hdf_vds_path,
-                data_path=field_name,
-                chunk=chunk,
-                hdf_out=tmp_data_path.joinpath(f"Chunked_{field_name}_{i}.nxs"),
-            )
-            for i, chunk in enumerate(chunks)
-        ]
-        with Pool(processors) as p:
-            print(
-                f" Begining chunking: {len(chunked_bins)} chunks over {processors} processors."
-            )
-            p.map(process_chunk_on_disk, chunked_bins)
+    if use_subprocesses:
+        queue = mQueue()
+    else:
+        queue = tQueue()
 
-        for ii, chunk_args in enumerate(chunked_bins):
-            if chunk_args.hdf_out.exists():
-                chunk_root = nxload(chunk_args.hdf_out)
-                chunk = chunk_args.chunk
-                data.signal[
+    total = len(chunks)
+
+    def report():
+        return (total - queue.qsize()), total
+
+    chunk_args: list[OnDiskArgs] = [
+        OnDiskArgs(
+            id=ii,
+            vds_in=hdf_vds_path,
+            data_path=data_path,
+            chunk=chunk,
+            hdf_out=tmp_data_path.joinpath(f"Chunked_{data_path}_{ii}.nxs"),
+        )
+        for ii, chunk in enumerate(chunks)
+    ]
+    with Timer(
+        data_path, interval=timer_interval, skip_percent=5, report_callback=report
+    ):
+        for arg in chunk_args:
+            queue.put(arg)
+
+        if use_subprocesses:
+            for ii in range(processes):
+                Process(
+                    target=queue_consumer, args=(ii, process_chunk_on_disk, queue)
+                ).start()
+        else:
+            for ii in range(processes):
+                Thread(
+                    target=queue_consumer,
+                    args=(ii, process_chunk_on_disk, queue),
+                    daemon=True,
+                ).start()
+
+        queue.join()
+
+    if use_subprocesses:
+        for ii in range(processes):
+            queue.put("STOP")
+
+    with Timer(
+        f"Collecting chunks for '{data_path}'",
+        interval=timer_interval,
+        skip_percent=5,
+        total=len(chunk_args),
+    ) as tmr:
+        for ii, arg in enumerate(chunk_args):
+            if arg.hdf_out.exists():
+                chunk_root = nxload(arg.hdf_out)
+                chunk = arg.chunk
+                hdf_out.signal[
                     chunk.layer,
                     chunk.width,
                     chunk.height,
@@ -294,6 +344,46 @@ def process_field_on_disk(
                 ] = chunk_root.entry.data[:, :, :, :]
             else:
                 continue
+            tmr.report(ii)
+
+    queue.join()
+
+
+def process_chunks_in_memory(
+    chunks: list[ChunkBounds],
+    data_path: str,
+    vds_in: h5.File,
+    hdf_out: NXdata,
+    processes: int,
+):
+    queue = tQueue()
+    total = len(chunks)
+
+    def report():
+        return (total - queue.qsize()), total
+
+    with Timer(
+        data_path, interval=timer_interval, skip_percent=5, report_callback=report
+    ):
+        for ii, chunk in enumerate(chunks):
+            queue.put(
+                InMemoryArgs(
+                    id=ii,
+                    vds_in=vds_in,
+                    data_path=data_path,
+                    chunk=chunk,
+                    hdf_out=hdf_out,
+                )
+            )
+
+        for ii in range(processes):
+            Thread(
+                target=queue_consumer,
+                args=(ii, process_chunk_in_memory, queue),
+                daemon=True,
+            ).start()
+
+        queue.join()
 
 
 def process(args: ProcessArgs):
@@ -311,9 +401,9 @@ def process(args: ProcessArgs):
         entry.save(hdf_out_path)
 
         with time_this("metadata"):
-            entry["instrument"], bounds, axis = process_metadata(args.hdf_in_path)
+            entry["instrument"], bounds, axis = read_metadata(args.hdf_in_path)
 
-        spectra_chunks, image_chunks, memory_info = chunking.calculate_chunks(
+        spectra_chunks, image_chunks, memory_info = calculate_chunks(
             args.chunk_count, args.max_memory, args.processors, bounds
         )
 
@@ -321,7 +411,7 @@ def process(args: ProcessArgs):
             NXdata(
                 NXfield(
                     dtype="int32",
-                    shape=bounds.shape(),
+                    shape=bounds.shape,
                     compression=args.compression,
                     compression_opts=args.compression_level,
                 ),
@@ -329,11 +419,11 @@ def process(args: ProcessArgs):
             )
         )
 
-        entry["mass_images"] = NXsubentry(
+        entry["images"] = NXsubentry(
             NXdata(
                 NXfield(
                     dtype="int32",
-                    shape=bounds.shape(),
+                    shape=bounds.shape,
                     compression=args.compression,
                     compression_opts=args.compression_level,
                 ),
@@ -345,41 +435,51 @@ def process(args: ProcessArgs):
         with time_this("VDS"):
             hdf_vds_path = args.tmp_data_path.joinpath("vds.h5")
             if args.do_spectra:
-                create_spectra_vds(hdf_vds_path, args.hdf_in_path, bounds, append=False)
+                create_spectra_vds(args.hdf_in_path, hdf_vds_path, bounds, append=False)
             if args.do_images:
                 create_image_vds(
-                    hdf_vds_path, args.hdf_in_path, bounds, append=args.do_spectra
+                    args.hdf_in_path, hdf_vds_path, bounds, append=args.do_spectra
                 )
 
         with h5.File(args.hdf_in_path, "r"):
             with h5.File(hdf_vds_path, "r") as vds:
-                if not args.on_disk:
+                if args.on_disk:
                     if args.do_spectra:
-                        process_field_in_memory(
-                            entry.spectra.data, vds, "spectra", spectra_chunks
+                        process_chunks_on_disk(
+                            chunks=spectra_chunks,
+                            data_path="spectra",
+                            use_subprocesses=args.use_subprocesses,
+                            hdf_vds_path=hdf_vds_path,
+                            tmp_data_path=args.tmp_data_path,
+                            hdf_out=entry.spectra.data,
+                            processes=args.processors,
                         )
 
                     if args.do_images:
-                        process_field_in_memory(
-                            entry.mass_images.data, vds, "mass_images", image_chunks
+                        process_chunks_on_disk(
+                            chunks=image_chunks,
+                            data_path="images",
+                            use_subprocesses=args.use_subprocesses,
+                            hdf_vds_path=hdf_vds_path,
+                            tmp_data_path=args.tmp_data_path,
+                            hdf_out=entry.images.data,
+                            processes=args.processors,
                         )
                 else:
                     if args.do_spectra:
-                        process_field_on_disk(
-                            entry.spectra.data,
-                            args.processors,
-                            hdf_vds_path,
-                            "spectra",
-                            spectra_chunks,
-                            args.tmp_data_path,
+                        process_chunks_in_memory(
+                            chunks=spectra_chunks,
+                            data_path="spectra",
+                            vds_in=vds,
+                            hdf_out=entry.spectra.data,
+                            processes=args.processors,
                         )
 
                     if args.do_images:
-                        process_field_on_disk(
-                            entry.mass_images.data,
-                            args.processors,
-                            hdf_vds_path,
-                            "mass_images",
-                            image_chunks,
-                            args.tmp_data_path,
+                        process_chunks_in_memory(
+                            chunks=image_chunks,
+                            data_path="images",
+                            vds_in=vds,
+                            hdf_out=entry.images.data,
+                            processes=args.processors,
                         )
