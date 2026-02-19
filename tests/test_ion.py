@@ -97,3 +97,4 @@ def test_ion_nxs(create_file):
 
     assert np.equal(data_root["entry"]["spectra"]["data"]["signal"], raw_data).all()
     assert np.equal(data_root["entry"]["images"]["data"]["signal"], raw_data).all()
+    assert np.equal(data_root["entry"]["data"]["signal"], raw_data).all()

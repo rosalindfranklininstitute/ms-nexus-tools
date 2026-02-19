@@ -431,7 +431,9 @@ def process(args: ProcessArgs):
             )
         )
 
-        entry["data"] = NXlinkfield("entry/spectra/data")
+        entry["data"] = NXdata(
+            NXlinkfield(entry["spectra/data/signal"]), axis.as_list()
+        )
         with time_this("VDS"):
             hdf_vds_path = args.tmp_data_path.joinpath("vds.h5")
             if args.do_spectra:
