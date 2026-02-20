@@ -17,6 +17,7 @@ from nexusformat.nexus.tree import (
     NXinstrument,
 )
 
+from ..lib.nxs import ImageAxis
 from ..lib import Timer, time_this
 from ..lib.chunking import (
     ImageBounds,
@@ -93,17 +94,6 @@ class ProcessArgs:
         action="store_false",
         doc="If present, will not process the images part of the input file.",
     )
-
-
-@dataclass
-class ImageAxis:
-    layer_axis: NXfield
-    x_axis: NXfield
-    y_axis: NXfield
-    mass_axis: NXfield
-
-    def as_list(self):
-        return [self.layer_axis, self.x_axis, self.y_axis, self.mass_axis]
 
 
 class IONImageBounds(ImageBounds):

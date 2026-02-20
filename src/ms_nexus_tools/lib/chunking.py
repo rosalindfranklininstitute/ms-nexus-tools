@@ -276,7 +276,7 @@ class OnDiskArgs:
     id: int
     vds_in: Path
     data_path: str
-    chunk: chunking.ChunkBounds
+    chunk: ChunkBounds
     hdf_out: Path
 
 

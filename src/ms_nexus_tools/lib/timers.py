@@ -88,7 +88,7 @@ class Timer(AbstractContextManager):
         self._last_report_time = now
         self._start_timer()
 
-    def report(self, count: int = -1):
+    def report(self, count: int = -1) -> None:
         assert count == -1 or self.report_callback is None
         skip = False
         if count >= 0:

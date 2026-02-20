@@ -82,7 +82,6 @@ def test_images_vds(create_file):
 def test_ion_nxs(create_file):
     raw_data, hdf_in_path, path = create_file
     _, bounds, axis = nxapi.ion.read_metadata(hdf_in_path)
-    vds_path = path.joinpath("spectrum_vds.h5")
 
     hdf_out_path = path.joinpath("rfi.nxs")
     ic(hdf_in_path, hdf_out_path)
