@@ -92,7 +92,6 @@ def test_ion_nxs(create_file):
     nxapi.ion.process(args)
 
     data_root = nxload(hdf_out_path)
-    nxlib.print_group(data_root)
 
     assert np.equal(data_root["entry"]["spectra"]["data"]["signal"], raw_data).all()
     assert np.equal(data_root["entry"]["images"]["data"]["signal"], raw_data).all()

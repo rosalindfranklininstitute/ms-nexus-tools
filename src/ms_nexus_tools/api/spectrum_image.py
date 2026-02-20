@@ -111,6 +111,8 @@ def process(args: ProcessArgs):
             x_axis = data_root["entry"]["data"]["x"]
             y_axis = data_root["entry"]["data"]["y"]
             mass_axis = data_root["entry"]["data"]["mass"]
+        case _:
+            raise NotImplementedError(f"Unimplemented filetype: {args.filetype}")
 
     width_slice = slice(None, None, None)
     if args.indexing == IndexType.DISTANCE:
@@ -132,13 +134,13 @@ def process(args: ProcessArgs):
         height_slice = slice(int(args.start_height), int(args.end_height), None)
         mass_axis = np.arange(image_bounds.spectrum_length)
 
-    image = np.zeros((1, image_bounds.spectrum_length))
+    image = np.zeros((image_bounds.spectrum_length,))
     match args.filetype:
         case DataType.ION_H5:
             assert isinstance(image_bounds, ion.IONImageBounds)
             with h5.File(args.hdf_in_path, "r") as hdf_in:
                 for ss in range(image_bounds.spectrum_length):
-                    image[ss] = sum(
+                    image[ss] = np.sum(
                         hdf_in[image_bounds.image_path(args.layer, ss)][
                             width_slice, height_slice
                         ]
@@ -147,7 +149,8 @@ def process(args: ProcessArgs):
         case DataType.ION_VDS:
             with h5.File(args.hdf_in_path, "r") as vds_in:
                 image = np.sum(
-                    vds_in[args.layer, width_slice, height_slice, :], axis=(0, 1)
+                    vds_in["images"][args.layer, width_slice, height_slice, :],
+                    axis=(0, 1),
                 )
 
         case DataType.NEXUS:

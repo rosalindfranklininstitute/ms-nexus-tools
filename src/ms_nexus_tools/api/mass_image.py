@@ -93,6 +93,8 @@ def process(args: ProcessArgs):
             data = data_root["entry"]["data"]["signal"]
             image_bounds = ImageBounds(*data.shape)
             mass_axis = data_root["entry"]["data"]["mass"]
+        case _:
+            raise NotImplementedError(f"Unimplemented filetype: {args.filetype}")
 
     spectra_slice = slice(None, None, None)
     if args.indexing == IndexType.MASS:
@@ -112,15 +114,17 @@ def process(args: ProcessArgs):
             with h5.File(args.hdf_in_path, "r") as hdf_in:
                 for ww in range(image_bounds.layer_width):
                     for hh in range(image_bounds.layer_width):
-                        image[ww, hh] = sum(
+                        image[ww, hh] = np.sum(
                             hdf_in[image_bounds.spectrum_path(args.layer, ww, hh)][
                                 spectra_slice
-                            ]
+                            ],
                         )
 
         case DataType.ION_VDS:
             with h5.File(args.hdf_in_path, "r") as vds_in:
-                image = np.sum(vds_in[args.layer, :, :, spectra_slice], axis=2)
+                image = np.sum(
+                    vds_in["spectra"][args.layer, :, :, spectra_slice], axis=2
+                )
 
         case DataType.NEXUS:
             data_root = nxload(args.hdf_in_path)

@@ -60,6 +60,9 @@ class Timer(AbstractContextManager):
         now = time.monotonic()
         print(f"{self.name} completed in {now - self._start:.2f}s")
 
+    def total_time(self):
+        return time.monotonic() - self._start
+
     def _start_timer(self):
         self._timer.cancel()
         self._timer = threading.Timer(
