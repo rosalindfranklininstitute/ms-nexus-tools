@@ -9,6 +9,7 @@ from . import api as api
 from .cli.ion2rfi import ion2rfi
 from .cli.compound import compound
 from .cli.mass_image import massimage
+from .cli.spectrum_image import specimage
 
 
 def main() -> None:

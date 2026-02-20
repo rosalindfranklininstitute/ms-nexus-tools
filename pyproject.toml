@@ -27,6 +27,7 @@ ion2rfi = "ms_nexus_tools:ion2rfi"
 profile = "ms_nexus_tools:profile"
 compound = "ms_nexus_tools:compound"
 massimage = "ms_nexus_tools:massimage"
+specimage = "ms_nexus_tools:specimage"
 
 [build-system]
 requires = ["uv_build>=0.10.0,<0.11.0"]
