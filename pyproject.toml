@@ -12,10 +12,12 @@ dependencies = [
     "h5py>=3.15.1",
     "hypothesis>=6.151.7",
     "icecream>=2.1.10",
+    "line-profiler>=5.0.1",
     "matplotlib>=3.10.8",
     "nexusformat>=2.0.1",
     "numpy>=2.4.2",
     "pytest>=9.0.2",
+    "pytest-autoprofile>=0.19.0",
     "scipy>=1.17.0",
     "snakeviz>=2.2.2",
 ]

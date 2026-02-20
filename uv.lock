@@ -211,6 +211,21 @@ wheels = [
 ]
 
 [[package]]
+name = "line-profiler"
+version = "5.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/2a/498665a424404a560b2c6b3a3ea8b4304dbe493ccc3d01a6866c7a38890e/line_profiler-5.0.1.tar.gz", hash = "sha256:3e56c5eee51aa8b82a09d8a35ab19f4100ee45d70eb676c2c58deedcc06c34b1", size = 406557, upload-time = "2026-02-07T05:06:49.814Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/76/f857c647597bca495dcba3f7edaf986516bde919152f19c71bef47a546fa/line_profiler-5.0.1-cp314-cp314-macosx_10_13_universal2.whl", hash = "sha256:8c0cd9f38eaddb506990080593381f276b1942c416e415a933632c4943895df3", size = 653895, upload-time = "2026-02-07T05:06:25.724Z" },
+    { url = "https://files.pythonhosted.org/packages/ad/3c/7688dff38a2bdcf66b990f5d7c496ca41dc63171a3e03a6049488842f786/line_profiler-5.0.1-cp314-cp314-macosx_10_13_x86_64.whl", hash = "sha256:4e901d75109f12a1a65edc2352401875cd51b69bf91537a9555c7691fdc0dd46", size = 514383, upload-time = "2026-02-07T05:06:26.976Z" },
+    { url = "https://files.pythonhosted.org/packages/93/4a/79513220bc2c4fa2a4e7468b89e18b917e82bc7ea1e7be1b924412f9cd20/line_profiler-5.0.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:5630d495f16babd812f4ef5cba90cf3cf3cc06b10a24f9becfb76a64e511bcbd", size = 505430, upload-time = "2026-02-07T05:06:28.216Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/f4/012446292f1fee6c4a5b7ebf3d5de7741550b8b3e781186a32c333ced1fa/line_profiler-5.0.1-cp314-cp314-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:4d9c0b8d01eddb99ed76f53e2f81cce8ceff68e751370af2bd1fd276fb17570e", size = 1480761, upload-time = "2026-02-07T05:06:29.297Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/e1/48aefe03d27a32b93ffec6aaaab1e0f5d5b94e0a44b3ddf0929c9eeef50c/line_profiler-5.0.1-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:4b76d6f7ab6d2b3018bea10172bbe105624d14f63bde9549c393502ca4ea9fb5", size = 2500278, upload-time = "2026-02-07T05:06:30.782Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/f8/0959ab4ff46a99c9db6d90de90d08bff6d3277fc4b80c9fb5d04300af798/line_profiler-5.0.1-cp314-cp314-win_amd64.whl", hash = "sha256:9bb97a77d8d5ffa8bf0193c5ee4d804dc8360244861f104c10c9e58c95721066", size = 491243, upload-time = "2026-02-07T05:06:32.087Z" },
+    { url = "https://files.pythonhosted.org/packages/54/6d/91e7e2390c064233c1e64de8d82059212814c29b46f33f554bc7fe0a2711/line_profiler-5.0.1-cp314-cp314-win_arm64.whl", hash = "sha256:c3a4807a30adda81ac246744bf42bff8cc54bcbbe5e3bfff4523b171349c5059", size = 475314, upload-time = "2026-02-07T05:06:33.358Z" },
+]
+
+[[package]]
 name = "matplotlib"
 version = "3.10.8"
 source = { registry = "https://pypi.org/simple" }
@@ -251,10 +266,12 @@ dependencies = [
     { name = "h5py" },
     { name = "hypothesis" },
     { name = "icecream" },
+    { name = "line-profiler" },
     { name = "matplotlib" },
     { name = "nexusformat" },
     { name = "numpy" },
     { name = "pytest" },
+    { name = "pytest-autoprofile" },
     { name = "scipy" },
     { name = "snakeviz" },
 ]
@@ -264,10 +281,12 @@ requires-dist = [
     { name = "h5py", specifier = ">=3.15.1" },
     { name = "hypothesis", specifier = ">=6.151.7" },
     { name = "icecream", specifier = ">=2.1.10" },
+    { name = "line-profiler", specifier = ">=5.0.1" },
     { name = "matplotlib", specifier = ">=3.10.8" },
     { name = "nexusformat", specifier = ">=2.0.1" },
     { name = "numpy", specifier = ">=2.4.2" },
     { name = "pytest", specifier = ">=9.0.2" },
+    { name = "pytest-autoprofile", specifier = ">=0.19.0" },
     { name = "scipy", specifier = ">=1.17.0" },
     { name = "snakeviz", specifier = ">=2.2.2" },
 ]
@@ -403,6 +422,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/d1/db/7ef3487e0fb0049ddb5ce41d3a49c235bf9ad299b6a25d5780a89f19230f/pytest-9.0.2.tar.gz", hash = "sha256:75186651a92bd89611d1d9fc20f0b4345fd827c41ccd5c299a868a05d70edf11", size = 1568901, upload-time = "2025-12-06T21:30:51.014Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3b/ab/b3226f0bd7cdcf710fbede2b3548584366da3b19b5021e74f5bde2a8fa3f/pytest-9.0.2-py3-none-any.whl", hash = "sha256:711ffd45bf766d5264d487b917733b453d917afd2b0ad65223959f59089f875b", size = 374801, upload-time = "2025-12-06T21:30:49.154Z" },
+]
+
+[[package]]
+name = "pytest-autoprofile"
+version = "0.19.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "line-profiler" },
+    { name = "pluggy" },
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/49/14/5f23aa724a10467521d5251de5f63ddc8a7b04a0ffebe3f1d209c99561b6/pytest_autoprofile-0.19.0.tar.gz", hash = "sha256:9b018151620d1b1e0feb54d6f8d5816bf8c9e04c97a3c15c4907723242ab9414", size = 112225, upload-time = "2025-12-30T01:50:32.55Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4c/68/bbf40a9e667c67ab283b97e9ea08b050b799a52455455152362ed7c1eace/pytest_autoprofile-0.19.0-py3-none-any.whl", hash = "sha256:be3d48cbbb870e26289b278adf574e5bfbacfd4ab71fe1b31a6b9ffc575a2b2f", size = 90389, upload-time = "2025-12-30T01:50:31.315Z" },
 ]
 
 [[package]]
