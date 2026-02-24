@@ -9,7 +9,9 @@ def print_item(item, offset=""):
         print(f"{offset}@{at}: {item.attrs[at]}")
 
 
-def print_group(d, offset=""):
+def print_group(d, offset="", max_depth=-1):
+    if max_depth == 0:
+        return
     if "keys" not in dir(d):
         print_item(d, offset)
         return
@@ -17,17 +19,17 @@ def print_group(d, offset=""):
     if mx < 10:
         for k in d.keys():
             print_item(d[k], offset)
-            print_group(d[k], offset=offset + "- ")
+            print_group(d[k], offset=offset + "- ", max_depth=max_depth - 1)
 
     else:
         for ii in range(0, 5):
             k = d.keys()[ii]
 
             print_item(d[k], offset)
-            print_group(d[k], offset=offset + "- ")
+            print_group(d[k], offset=offset + "- ", max_depth=max_depth - 1)
         print(" " * len(offset) + "...")
         for ii in range(-5, 0):
             k = d.keys()[ii]
 
             print_item(d[k], offset)
-            print_group(d[k], offset=offset + "- ")
+            print_group(d[k], offset=offset + "- ", max_depth=max_depth - 1)

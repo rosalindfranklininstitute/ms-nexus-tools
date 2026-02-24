@@ -10,6 +10,7 @@ from .cli.ion2rfi import ion2rfi
 from .cli.compound import compound
 from .cli.mass_image import massimage
 from .cli.spectrum_image import specimage
+from .cli.inspect_h5 import inspect
 
 
 def main() -> None:

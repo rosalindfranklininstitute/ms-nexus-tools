@@ -30,6 +30,7 @@ profile = "ms_nexus_tools:profile"
 compound = "ms_nexus_tools:compound"
 massimage = "ms_nexus_tools:massimage"
 specimage = "ms_nexus_tools:specimage"
+inspect = "ms_nexus_tools:inspect"
 
 [build-system]
 requires = ["uv_build>=0.10.0,<0.11.0"]
