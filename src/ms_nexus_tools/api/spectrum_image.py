@@ -15,17 +15,12 @@ from icecream import ic
 from . import ion
 from .api import arg_field, ArgType
 from ..lib.chunking import ChunkBounds, ImageBounds
+from ..lib.filetypes import DataType
 
 
 class IndexType(Enum):
     INDEX = "index"
     DISTANCE = "dist"
-
-
-class DataType(Enum):
-    ION_H5 = "ion"
-    ION_VDS = "vds"
-    NEXUS = "nsx"
 
 
 @dataclass
@@ -139,13 +134,16 @@ def process(args: ProcessArgs):
         case DataType.ION_H5:
             assert isinstance(image_bounds, ion.IONImageBounds)
             with h5.File(args.hdf_in_path, "r") as hdf_in:
-                for ss in range(image_bounds.spectrum_length):
-                    image[ss] = np.sum(
-                        hdf_in[image_bounds.image_path(args.layer, ss)][
-                            width_slice, height_slice
-                        ]
-                    )
-
+                image = np.array(
+                    [
+                        np.sum(
+                            hdf_in[image_bounds.image_path(args.layer, ss)][
+                                width_slice, height_slice
+                            ]
+                        )
+                        for ss in range(image_bounds.spectrum_length)
+                    ]
+                )
         case DataType.ION_VDS:
             with h5.File(args.hdf_in_path, "r") as vds_in:
                 image = np.sum(

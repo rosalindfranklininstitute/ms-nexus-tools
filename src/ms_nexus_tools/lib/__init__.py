@@ -1,4 +1,4 @@
 from .h5_printer import print_group
-from .timers import time_this, Timer
+from .timers import time_this, Timer, JSONTimer
 from . import chunking as chunking
 from . import utils as utils

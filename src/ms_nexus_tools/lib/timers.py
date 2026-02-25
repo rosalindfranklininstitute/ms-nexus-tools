@@ -1,7 +1,12 @@
-from typing import Callable
+from typing import Callable, Any
 from contextlib import contextmanager, AbstractContextManager
 import time
+import json
 import threading
+from collections.abc import Iterable
+from pathlib import Path
+
+from icecream import ic
 
 
 @contextmanager
@@ -105,3 +110,36 @@ class Timer(AbstractContextManager):
             return
 
         self._print()
+
+
+class JSONTimer(AbstractContextManager):
+    def __init__(self, filename: Path, keys: Iterable[str]):
+        self.filename = filename
+        self.keys = keys
+
+        self._start: float = -1
+        self._data: dict[str, Any] = {}
+
+    def __enter__(self):
+        self._start = time.monotonic()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        end = time.monotonic()
+        duration = end - self._start
+        timings = {}
+        if self.filename.exists():
+            with open(self.filename, "r") as fd:
+                timings = json.load(fd)
+        new_data = timings
+        for key in self.keys:
+            if key not in new_data:
+                new_data[key] = {}
+            new_data = new_data[key]
+        new_data["duratioin"] = duration
+        new_data.update(self._data)
+        with open(self.filename, "w") as fd:
+            json.dump(timings, fd, indent=2)
+
+    def add_user_data(self, /, **kwargs):
+        self._data.update(kwargs)

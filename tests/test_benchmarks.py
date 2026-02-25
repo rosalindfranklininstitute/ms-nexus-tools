@@ -1,10 +1,13 @@
 import pytest
 
+from dataclasses import dataclass
 import json
 import numpy as np
 from pathlib import Path
 import shutil
 import datetime as dt
+
+import multiprocessing as mp
 
 from nexusformat.nexus import NXfield, nxload
 from nexusformat.nexus.tree import NXinstrument
@@ -12,10 +15,10 @@ from nexusformat.nexus.tree import NXinstrument
 import h5py as h5
 
 from ms_nexus_tools import api as nxapi, lib as nxlib
-from ms_nexus_tools.api.spectrum_image import DataType as SpecDataType
-from ms_nexus_tools.api.mass_image import DataType as MassDataType
 
 from icecream import ic
+
+subprocess = True
 
 
 def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
@@ -112,7 +115,7 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
 
 @pytest.fixture(scope="module")
 def create_small_files():
-    return create_files("small", 1, 50, 50, 1000)
+    return create_files("small", 1, 50, 50, 1_000)
 
 
 @pytest.fixture(scope="module")
@@ -125,101 +128,129 @@ def create_large_files():
     return create_files("large", 10, 50, 50, 100_000)
 
 
-@pytest.mark.parametrize(
-    "test_files", ["create_small_files", "create_medium_files", "create_large_files"]
-)
-def test_spectra_slices(test_files, request):
-    dir, shape, path, hdf_path, vds_path, nxs_path = request.getfixturevalue(test_files)
+def generate_parameterization():
+    side_sizes = [1, 5, 25]
+    file_fixture_names = [
+        "create_small_files",
+        "create_medium_files",
+        "create_large_files",
+    ]
+    # file_fixture_names = ["create_small_files", "create_medium_files"]
+    # file_fixture_names = ["create_small_files"]
+    functions = [("spec", run_spectrum_image, 1, 1), ("mass", run_mass_image, 10, 1)]
+    return "test_files, n, side_inc, name, function", [
+        (fixture_name, n, side * mult, name, func)
+        for fixture_name in file_fixture_names
+        for side in side_sizes
+        for name, func, mult, n in functions
+    ]
 
-    n = 1
-    times: dict[str, dict[int, float]] = {}
-    times["start_time"]: str = dt.datetime.now().isoformat()
-    out_path = path.joinpath("spec.csv")
+
+def run_spectrum_image(
+    n: int,
+    side_inc: int,
+    shape: tuple[int, int, int, int],
+    in_path: Path,
+    out_path: Path,
+    filetype: nxlib.filetypes.DataType,
+    iterations,
+):
+    count = 0
+    for _ in range(n):
+        for ii in range(10):
+            if (ii + 1) * side_inc > shape[1]:
+                continue
+
+            if (ii + 1) * side_inc > shape[2]:
+                continue
+
+            args = nxapi.spectrum_image.ProcessArgs(
+                hdf_in_path=in_path,
+                img_out_path=out_path,
+                layer=0,
+                start_width=ii * side_inc,
+                end_width=(ii + 1) * side_inc,
+                start_height=ii * side_inc,
+                end_height=(ii + 1) * side_inc,
+                filetype=filetype,
+            )
+            nxapi.spectrum_image.process(args)
+            assert out_path.exists()
+            count += 1
+    iterations.value = count
+
+
+def run_mass_image(
+    n: int,
+    side_inc: int,
+    shape: tuple[int, int, int, int],
+    in_path: Path,
+    out_path: Path,
+    filetype: nxlib.filetypes.DataType,
+    iterations,
+):
+    count = 0
+    for _ in range(n):
+        for ss in range(10):
+            if (ss + 1) * side_inc > shape[3]:
+                continue
+
+            args = nxapi.mass_image.ProcessArgs(
+                hdf_in_path=in_path,
+                img_out_path=out_path,
+                layer=0,
+                start=ss * side_inc,
+                end=(ss + 1) * side_inc,
+                filetype=filetype,
+            )
+            nxapi.mass_image.process(args)
+            assert out_path.exists()
+            count += 1
+    iterations.value = count
+
+
+@pytest.mark.parametrize(*generate_parameterization())
+def test_slices(test_files, n, side_inc, name, function, request):
+    dir, shape, path, hdf_path, vds_path, nxs_path = request.getfixturevalue(test_files)
+    out_path = path.joinpath(f"{name}.csv")
 
     files_to_test = [
-        (hdf_path, SpecDataType.ION_H5),
+        (hdf_path, nxlib.filetypes.DataType.ION_H5),
     ]
     if dir == "small":
-        files_to_test.append((vds_path, SpecDataType.ION_VDS))
-    files_to_test.append((nxs_path, SpecDataType.NEXUS))
+        files_to_test.append((vds_path, nxlib.filetypes.DataType.ION_VDS))
+    files_to_test.append((nxs_path, nxlib.filetypes.DataType.NEXUS))
 
     for in_path, filetype in files_to_test:
-        times[filetype.value] = {}
-        for side_inc in [1, 5, 25]:
-            with nxlib.Timer(f"Spectrum, {filetype}, {side_inc}") as tmr:
-                for _ in range(n):
-                    for ww in range(10):
-                        if (ww + 1) * side_inc > shape[1]:
-                            continue
-                        for hh in range(10):
-                            if (hh + 1) * side_inc > shape[2]:
-                                continue
+        with nxlib.JSONTimer(
+            path.joinpath("times.json"),
+            (name, str(filetype), str(side_inc), "forward"),
+        ) as tmr:
+            count = mp.Value("d", 0)
+            if subprocess:
+                p = mp.Process(
+                    target=function,
+                    args=(n, side_inc, shape, in_path, out_path, filetype, count),
+                )
+                p.start()
+                p.join()
+            else:
+                function(n, side_inc, shape, in_path, out_path, filetype, count)
+            tmr.add_user_data(count=count.value)
 
-                            args = nxapi.spectrum_image.ProcessArgs(
-                                hdf_in_path=in_path,
-                                img_out_path=out_path,
-                                layer=0,
-                                start_width=ww * side_inc,
-                                end_width=(ww + 1) * side_inc,
-                                start_height=hh * side_inc,
-                                end_height=(hh + 1) * side_inc,
-                                filetype=filetype,
-                            )
-                            nxapi.spectrum_image.process(args)
-                            assert out_path.exists()
-                times[filetype.value][side_inc] = tmr.total_time()
-    times["shape"]: dict[str, int] = {}
-    times["shape"]["width"] = shape[1]
-    times["shape"]["height"] = shape[2]
-    times["shape"]["sectrum"] = shape[3]
-    times["repeated"]: int = n
-    times["end_time"]: str = dt.datetime.now().isoformat()
-    with open(path.joinpath("spectr_times.json"), "w") as record:
-        json.dump(times, record, indent=2)
-
-
-@pytest.mark.parametrize(
-    "test_files", ["create_small_files", "create_medium_files", "create_large_files"]
-)
-def test_image_slices(test_files, request):
-    dir, shape, path, hdf_path, vds_path, nxs_path = request.getfixturevalue(test_files)
-
-    n = 1
-    times: dict[str, dict[int, float]] = {}
-    out_path = path.joinpath("mass.csv")
-
-    files_to_test = [
-        (hdf_path, MassDataType.ION_H5),
-    ]
-    if dir == "small":
-        files_to_test.append((vds_path, MassDataType.ION_VDS))
-    files_to_test.append((nxs_path, MassDataType.NEXUS))
-
-    for in_path, filetype in files_to_test:
-        times[filetype.value] = {}
-        for side_inc in [1, 50, 250]:
-            with nxlib.Timer(f"Image, {filetype}, {side_inc}") as tmr:
-                for _ in range(n):
-                    for ss in range(10):
-                        if (ss + 1) * side_inc > shape[1]:
-                            continue
-
-                        args = nxapi.mass_image.ProcessArgs(
-                            hdf_in_path=in_path,
-                            img_out_path=out_path,
-                            layer=0,
-                            start=ss * side_inc,
-                            end=(ss + 1) * side_inc,
-                            filetype=filetype,
-                        )
-                        nxapi.mass_image.process(args)
-                        assert out_path.exists()
-                times[filetype.value][side_inc] = tmr.total_time()
-    times["shape"]: dict[str, int] = {}
-    times["shape"]["width"] = shape[1]
-    times["shape"]["height"] = shape[2]
-    times["shape"]["sectrum"] = shape[3]
-    times["repeated"]: int = n
-    times["time"]: str = dt.datetime.now().isoformat()
-    with open(path.joinpath("mass_times.json"), "w") as record:
-        json.dump(times, record, indent=2)
+    for in_path, filetype in reversed(files_to_test):
+        with nxlib.JSONTimer(
+            path.joinpath("times.json"),
+            (name, str(filetype), str(side_inc), "backward"),
+        ) as tmr:
+            count = mp.Value("d", 0)
+            if subprocess:
+                p = mp.Process(
+                    target=function,
+                    args=(n, side_inc, shape, in_path, out_path, filetype, count),
+                )
+                p.start()
+                p.join()
+            else:
+                function(n, side_inc, shape, in_path, out_path, filetype, count)
+            tmr.add_user_data(count=count.value)
