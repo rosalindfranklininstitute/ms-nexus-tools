@@ -10,7 +10,7 @@ def inspect():
     parser = argparse.ArgumentParser(prog="inspect")
     parser.add_argument("filename", help="The file")
     parser.add_argument(
-        "-d", "--depth", default=None, help="The maximum depth to print."
+        "-d", "--depth", default=None, help="The maximum depth to print.", type=int
     )
 
     args = parser.parse_args()

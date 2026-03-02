@@ -136,7 +136,7 @@ class JSONTimer(AbstractContextManager):
             if key not in new_data:
                 new_data[key] = {}
             new_data = new_data[key]
-        new_data["duratioin"] = duration
+        new_data["duration"] = duration
         new_data.update(self._data)
         with open(self.filename, "w") as fd:
             json.dump(timings, fd, indent=2)

@@ -1,6 +1,11 @@
+from typing import Generator
 from dataclasses import dataclass, field
 import math
+import sys
 from pathlib import Path
+
+import numpy as np
+import numpy.typing as npt
 
 import h5py as h5
 
@@ -10,6 +15,8 @@ from nexusformat.nexus.tree import (
     NXprocess,
     NXparameters,
 )
+
+from icecream import ic
 
 from .utils import count_digits
 
@@ -29,10 +36,6 @@ class ImageBounds:
             self.layer_height,
             self.spectrum_length,
         )
-        self._layer_count_digits = count_digits(self.layer_count)
-        self._layer_width_digits = count_digits(self.layer_width)
-        self._layer_height_digits = count_digits(self.layer_height)
-        self._spectrum_length_digits = count_digits(self.spectrum_length)
 
 
 @dataclass
@@ -117,7 +120,7 @@ class MemoryInfo:
         gb_max: float | None,
         processors: int,
         bounds: ImageBounds,
-    ) -> MemoryInfo:
+    ) -> "MemoryInfo":
         total_gb = ChunkBounds(
             slice(0, bounds.layer_count),
             slice(0, bounds.layer_width),
@@ -335,3 +338,76 @@ def process_chunk_in_memory(args: InMemoryArgs):
     ] = args.vds_in[args.data_path][
         args.chunk.layer, args.chunk.width, args.chunk.height, args.chunk.spectra
     ]
+
+
+def count_priorities(
+    priorities: tuple[int, ...] | list[int],
+) -> Generator[tuple[list[int], int]]:
+    count = 0
+    rev_prior = [r for r in np.argsort(priorities)]
+    while count < len(priorities):
+        priority = priorities[rev_prior[count]]
+        dimensions = []
+        while count < len(priorities) and priorities[rev_prior[count]] == priority:
+            dimensions.append(rev_prior[count])
+            count += 1
+        yield dimensions, len(priorities) - count
+
+
+class Chunker:
+    """
+    A class for calculating the chunking of a data blob based on the data,
+    shape, the number of entries in the data and, the priority of each axis.
+    Lower values of priority will have more values per chunk.
+    So that:
+    >>> Chunker(data_shape=(100,100), priorities=(1,2), count=10).chunk_shape
+    (10, 1)
+
+    and
+    >>> Chunker(data_shape=(10,10), priorities=(2,1), count=20).chunk_shape
+    (2, 10)
+    """
+
+    def __init__(
+        self, data_shape: tuple[int, ...], priorities: tuple[int, ...], count: int
+    ):
+        assert len(data_shape) == len(priorities)
+        self.data_shape = data_shape
+        self.priorities = priorities
+        self.count = count
+
+        self.chunk_shape, self.chunk_count = self._calculate()
+
+    def _calculate(self) -> tuple[tuple[int, ...], tuple[int, ...]]:
+
+        chunk_shape = [1 for _ in self.priorities]
+
+        remaining_count = self.count
+        for dimensions, remaining in count_priorities(self.priorities):
+            n_dims = len(dimensions)
+            capacity = np.prod([self.data_shape[i] for i in dimensions])
+            if capacity > remaining_count:
+                dim_data_shape = np.array([self.data_shape[d] for d in dimensions])
+                min_dim = np.min(dim_data_shape)
+                weightings = dim_data_shape / min_dim
+
+                chunks_per_dim = np.pow(
+                    remaining_count / np.prod(weightings), 1 / n_dims
+                )
+
+                for d, w in zip(dimensions, weightings):
+                    chunk_shape[d] = math.ceil(w * chunks_per_dim)
+            else:
+                for d in dimensions:
+                    chunk_shape[d] = self.data_shape[d]
+
+            remaining_count = max(remaining_count / capacity, 1)
+
+        chunk_count = [
+            math.ceil(self.data_shape[i] / c) for i, c in enumerate(chunk_shape)
+        ]
+
+        return tuple(chunk_shape), tuple(chunk_count)
+
+    def __repr__(self) -> str:
+        return f"data: {self.data_shape} count: {self.count} p: {self.priorities} cshape: {self.chunk_shape} ccount: {self.chunk_count}"

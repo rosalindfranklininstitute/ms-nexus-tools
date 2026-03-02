@@ -2,6 +2,7 @@ from typing import Any
 import argparse
 from dataclasses import field, Field, MISSING, fields
 from enum import Enum
+import sys
 
 
 class ArgType(Enum):
@@ -21,7 +22,6 @@ def arg_field(*args, arg_type: ArgType = ArgType.AUTOMATIC, **kw_args):
         "compare",
         "metadata",
         "kw_only",
-        "doc",
     )
 
     field_kw_args = {}
@@ -31,8 +31,16 @@ def arg_field(*args, arg_type: ArgType = ArgType.AUTOMATIC, **kw_args):
             field_kw_args[key] = kw_args[key]
             del kw_args[key]
 
-    if "help" in kw_args:
-        field_kw_args["doc"] = kw_args["help"]
+    if "doc" in kw_args:
+        if sys.version_info.minor >= 14:
+            field_kw_args["doc"] = kw_args["doc"]
+            del kw_args["doc"]
+    elif "help" in kw_args:
+        assert "doc" not in kw_args
+        if sys.version_info.minor < 14:
+            kw_args["doc"] = kw_args["help"]
+        else:
+            field_kw_args["doc"] = kw_args["help"]
         del kw_args["help"]
 
     if "metadata" in field_kw_args:
@@ -57,8 +65,13 @@ def add_argument(parser: argparse.ArgumentParser, fld: Field):
     try:
         kw_args: dict[str, Any] = {
             "type": fld.type,
-            "help": fld.doc,
         }
+        assert sys.version_info.major == 3
+        if sys.version_info.minor < 14:
+            kw_args["help"] = fld.metadata["doc"]
+        else:
+            kw_args["help"] = fld.doc
+
         args: list[str] = list(fld.metadata["args"])
 
         match fld.metadata["arg_type"]:
@@ -71,6 +84,9 @@ def add_argument(parser: argparse.ArgumentParser, fld: Field):
                 pass
 
         kw_args.update(fld.metadata)
+
+        if "doc" in kw_args:
+            del kw_args["doc"]
         del kw_args["args"]
         del kw_args["arg_type"]
 

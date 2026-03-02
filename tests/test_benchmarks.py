@@ -1,11 +1,10 @@
 import pytest
 
-from dataclasses import dataclass
-import json
+import os
 import numpy as np
 from pathlib import Path
 import shutil
-import datetime as dt
+import dataclasses
 
 import multiprocessing as mp
 
@@ -29,8 +28,8 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
     nxs_path: Path = path.joinpath("nxs.h5")
 
     if not path.exists():
-        path.mkdir()
-    else:
+        path.mkdir(parents=True)
+    elif hdf_path.exists() and vds_path.exists() and nxs_path.exists():
         identical = True
         _, bounds, axis = nxapi.ion.read_metadata(hdf_path)
         identical &= bounds.layer_count == layers
@@ -59,7 +58,7 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
         else:
             return dir, raw_data.shape, path, hdf_path, vds_path, nxs_path
 
-    with nxlib.Timer(dir):
+    with nxlib.JSONTimer(path.joinpath("times.json"), ("data",)) as tmr:
         bounds = nxapi.ion.IONImageBounds(
             layer_count=layers,
             layer_width=width,
@@ -98,19 +97,45 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
                 [ss**2 for ss in range(bounds.spectrum_length)], name="mass", unit="m/z"
             ),
         )
+        uncompressed_size = (
+            bounds.layer_count
+            * bounds.layer_width
+            * bounds.layer_height
+            * bounds.spectrum_length
+            * 4
+        )
+        tmr.add_user_data(
+            layer_count=bounds.layer_count,
+            layer_width=bounds.layer_width,
+            layer_height=bounds.layer_height,
+            spectrum_length=bounds.spectrum_length,
+        )
+        tmr.add_user_data(**{"raw size (bytes)": uncompressed_size})
 
+    with nxlib.JSONTimer(
+        path.joinpath("times.json"), ("data", str(nxlib.filetypes.DataType.ION_H5))
+    ) as tmr:
         nxapi.ion.write_metadata(hdf_path, NXinstrument(), bounds, image_axis)
         nxapi.ion.write_spectrum(hdf_path, bounds, raw_data, append=True)
         nxapi.ion.write_image(hdf_path, bounds, raw_data, append=True)
+        tmr.add_user_data(**{"size (bytes)": os.stat(hdf_path).st_size})
 
+    with nxlib.JSONTimer(
+        path.joinpath("times.json"), ("data", str(nxlib.filetypes.DataType.ION_VDS))
+    ) as tmr:
         nxapi.ion.create_spectra_vds(hdf_path, vds_path, bounds, append=False)
         nxapi.ion.create_image_vds(hdf_path, vds_path, bounds, append=True)
+        tmr.add_user_data(**{"size (bytes)": os.stat(vds_path).st_size})
 
-        nxlib.nxs.write_nxs(
+    with nxlib.JSONTimer(
+        path.joinpath("times.json"), ("data", str(nxlib.filetypes.DataType.NEXUS))
+    ) as tmr:
+        nxlib.nxs.write_from_data(
             nxs_path, raw_data, x_microns, y_microns, np.array(image_axis.mass_axis)
         )
+        tmr.add_user_data(**{"size (bytes)": os.stat(nxs_path).st_size})
 
-        return dir, raw_data.shape, path, hdf_path, vds_path, nxs_path
+    return dir, raw_data.shape, path, hdf_path, vds_path, nxs_path
 
 
 @pytest.fixture(scope="module")

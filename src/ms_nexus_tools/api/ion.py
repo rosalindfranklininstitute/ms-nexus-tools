@@ -1,3 +1,5 @@
+from typing import Union
+
 from dataclasses import dataclass
 import os
 import shutil
@@ -18,7 +20,7 @@ from nexusformat.nexus.tree import (
 )
 
 from ..lib.nxs import ImageAxis
-from ..lib import Timer, time_this
+from ..lib import Timer, time_this, utils
 from ..lib.chunking import (
     ImageBounds,
     ChunkBounds,
@@ -51,7 +53,7 @@ class ProcessArgs:
     )
     tmp_data_path: Path = arg_field(
         default=Path("./tmp_data"),
-        doc="The folder used to store intermediary files used in processing. This can be used for resuming interupted runns, if not overridden.",
+        doc="The folder used to store intermediary files used in processing. This can be used for resuming interrupted runs, if not overridden.",
     )
 
     chunk_count: int = arg_field(
@@ -97,6 +99,13 @@ class ProcessArgs:
 
 
 class IONImageBounds(ImageBounds):
+    def __post_init__(self):
+        super().__post_init__()
+        self._layer_count_digits = utils.count_digits(self.layer_count)
+        self._layer_width_digits = utils.count_digits(self.layer_width)
+        self._layer_height_digits = utils.count_digits(self.layer_height)
+        self._spectrum_length_digits = utils.count_digits(self.spectrum_length)
+
     def spectrum_path(self, layer: int, w: int, h: int) -> str:
         return f"/Spectra/Layer{layer + 1:0{self._layer_count_digits}}/Pixel{w:0{self._layer_width_digits}},{h:0{self._layer_height_digits}}"
 
@@ -255,7 +264,7 @@ def create_image_vds(
         vds.create_virtual_dataset("images", mass_layout, fillvalue=0)
 
 
-def queue_consumer(ii: int, function, queue: mQueue | tQueue):
+def queue_consumer(ii: int, function, queue: Union[mQueue, tQueue]):
     for args in iter(queue.get, "STOP"):
         function(args)
         queue.task_done()
