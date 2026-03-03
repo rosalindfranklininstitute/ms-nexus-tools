@@ -21,6 +21,14 @@ from icecream import ic
 from .utils import count_digits
 
 
+def approximate_gb(int4_count: float) -> float:
+    return int4_count * 4 / 1024 / 1024 / 1024
+
+
+def approximate_int4_count(gb: float) -> float:
+    return (gb / 4) * 1024 * 1024 * 1024
+
+
 @dataclass
 class ImageBounds:
     layer_count: int
@@ -36,14 +44,6 @@ class ImageBounds:
             self.layer_height,
             self.spectrum_length,
         )
-
-
-def approximate_gb(int4_count: float) -> float:
-    return int4_count * 4 / 1024 / 1024 / 1024
-
-
-def approximate_int4_count(gb: float) -> float:
-    return (gb / 4) * 1024 * 1024 * 1024
 
 
 @dataclass
@@ -123,7 +123,7 @@ class ChunkBounds:
         return int(np.prod(self.shape()))
 
 
-def count_priorities(
+def _count_priorities(
     priorities: tuple[int, ...] | list[int],
 ) -> Generator[tuple[list[int], int]]:
     count = 0
@@ -185,7 +185,7 @@ class Chunker:
         chunk_shape = [1 for _ in self.priorities]
 
         remaining_count = min_items_per_chunk
-        for dimensions, remaining in count_priorities(self.priorities):
+        for dimensions, remaining in _count_priorities(self.priorities):
             n_dims = len(dimensions)
             capacity = np.prod([self.data_shape[i] for i in dimensions])
             if capacity > remaining_count:
@@ -234,7 +234,7 @@ class Chunker:
 
         max_remaining_chunks = min_chunk_count
 
-        for dimensions, remaining in count_priorities(self.priorities):
+        for dimensions, remaining in _count_priorities(self.priorities):
             dim_data_shape = np.array([self.data_shape[d] for d in dimensions])
             max_dim_chunks = np.prod(dim_data_shape)
             dim_data_shape = [self.data_shape[d] for d in dimensions]
