@@ -55,6 +55,23 @@ def test_matched_priorities():
     assert chunker.chunk_count == (17, 17, 17)
 
 
+def test_chunks():
+
+    chunker = Chunker(data_shape=(10, 10, 10), priorities=(1, 1, 1), count=10)
+
+    assert chunker.chunk_shape == (3, 3, 3)
+    assert chunker.chunk_count == (4, 4, 4)
+
+    chunks = [chunk for chunk in chunker.chunks()]
+    assert len(chunks) == np.prod(chunker.chunk_count)
+
+    flags = np.zeros(chunker.data_shape)
+    assert np.sum(flags) == 0
+    for chunk in chunks:
+        flags[*chunk] = 1
+    assert np.sum(flags) == np.prod(chunker.data_shape)
+
+
 @given(
     st.integers(min_value=1, max_value=100),
     st.integers(min_value=1, max_value=100),
