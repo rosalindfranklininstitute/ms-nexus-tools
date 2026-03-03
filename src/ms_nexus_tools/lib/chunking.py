@@ -38,6 +38,14 @@ class ImageBounds:
         )
 
 
+def approximate_gb(int4_count: float) -> float:
+    return int4_count * 4 / 1024 / 1024 / 1024
+
+
+def approximate_int4_count(gb: float) -> float:
+    return (gb / 4) * 1024 * 1024 * 1024
+
+
 @dataclass
 class ChunkBounds:
     layer: slice
@@ -60,15 +68,11 @@ class ChunkBounds:
         )
 
     def approximate_size_gb(self) -> float:
-        return (
+        return approximate_gb(
             float(self.layer.stop - self.layer.start)
             * float(self.width.stop - self.width.start)
             * float(self.height.stop - self.height.start)
             * float(self.spectra.stop - self.spectra.start)
-            * 4
-            / 1024
-            / 1024
-            / 1024
         )
 
     def layer_count(self) -> int:
@@ -107,6 +111,17 @@ class ChunkBounds:
             spectra_stop=self.spectra.stop,
         )
 
+    def shape(self) -> tuple[int, int, int, int]:
+        return (
+            self.layer.stop - self.layer.start,
+            self.width.stop - self.width.start,
+            self.height.stop - self.height.start,
+            self.spectra.stop - self.spectra.start,
+        )
+
+    def count(self) -> int:
+        return int(np.prod(self.shape()))
+
 
 def count_priorities(
     priorities: tuple[int, ...] | list[int],
@@ -136,23 +151,40 @@ class Chunker:
     (2, 10)
     """
 
-    def __init__(
-        self, data_shape: tuple[int, ...], priorities: tuple[int, ...], count: int
-    ):
+    def __init__(self):
+        self.data_shape: tuple[int, ...]
+        self.priorities: tuple[int, ...]
+        self.n_dims: int
+
+        self.chunk_shape: tuple[int, ...]
+        self.chunk_count: tuple[int, ...]
+        self.n_chunks: int
+
+    @staticmethod
+    def from_item_count(
+        data_shape: tuple[int, ...],
+        priorities: tuple[int, ...],
+        min_items_per_chunk: int,
+    ) -> "Chunker":
+        chunker = Chunker()
         assert len(data_shape) == len(priorities)
-        self.data_shape = data_shape
-        self.priorities = priorities
-        self.count = count
-        self.n_dims = len(self.data_shape)
+        chunker.data_shape = data_shape
+        chunker.priorities = priorities
+        chunker.n_dims = len(chunker.data_shape)
 
-        self.chunk_shape, self.chunk_count = self._calculate()
-        self.n_chunks = int(np.prod(self.chunk_count))
+        chunker.chunk_shape, chunker.chunk_count = chunker._calculate_from_min_count(
+            min_items_per_chunk
+        )
+        chunker.n_chunks = int(np.prod(chunker.chunk_count))
+        return chunker
 
-    def _calculate(self) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    def _calculate_from_min_count(
+        self, min_items_per_chunk
+    ) -> tuple[tuple[int, ...], tuple[int, ...]]:
 
         chunk_shape = [1 for _ in self.priorities]
 
-        remaining_count = self.count
+        remaining_count = min_items_per_chunk
         for dimensions, remaining in count_priorities(self.priorities):
             n_dims = len(dimensions)
             capacity = np.prod([self.data_shape[i] for i in dimensions])
@@ -179,8 +211,104 @@ class Chunker:
 
         return tuple(chunk_shape), tuple(chunk_count)
 
+    @staticmethod
+    def from_min_chunks(
+        data_shape: tuple[int, ...],
+        priorities: tuple[int, ...],
+        min_chunk_count: int,
+    ) -> "Chunker":
+        chunker = Chunker()
+        assert len(data_shape) == len(priorities)
+        chunker.data_shape = data_shape
+        chunker.priorities = priorities
+        chunker.n_dims = len(chunker.data_shape)
+
+        chunker.chunk_shape, chunker.chunk_count = chunker._calculate_from_min_chunks(
+            min_chunk_count
+        )
+        chunker.n_chunks = int(np.prod(chunker.chunk_count))
+        return chunker
+
+    def _calculate_from_min_chunks(self, min_chunk_count):
+        chunk_count = [1 for _ in self.priorities]
+
+        max_remaining_chunks = min_chunk_count
+
+        for dimensions, remaining in count_priorities(self.priorities):
+            dim_data_shape = np.array([self.data_shape[d] for d in dimensions])
+            max_dim_chunks = np.prod(dim_data_shape)
+            dim_data_shape = [self.data_shape[d] for d in dimensions]
+            if max_dim_chunks <= max_remaining_chunks:
+                for d in dimensions:
+                    chunk_count[d] = self.data_shape[d]
+                max_remaining_chunks = math.ceil(max_remaining_chunks / max_dim_chunks)
+            else:
+                for d, c in self._calculate_same_priority_from_min_chunks(
+                    dimensions, max_remaining_chunks
+                ):
+                    chunk_count[d] = c
+                max_dim_chunks = np.prod([self.data_shape[d] for d in dimensions])
+                max_remaining_chunks = math.ceil(max_remaining_chunks / max_dim_chunks)
+            if max_remaining_chunks == 1:
+                break
+
+        chunk_shape = [
+            math.ceil(self.data_shape[i] / c) for i, c in enumerate(chunk_count)
+        ]
+
+        return tuple(chunk_shape), tuple(chunk_count)
+
+    def _calculate_same_priority_from_min_chunks(
+        self, dimensions: list[int], max_remaining_chunks: int
+    ) -> list[tuple[int, int]]:
+        dim_data_shape = np.array([self.data_shape[d] for d in dimensions])
+
+        remaining_chunks = max_remaining_chunks
+        below_average = []
+        above_average = [d for d in dimensions]
+        previous_length = -1
+
+        chunks_per_dim = -1
+
+        while previous_length != len(below_average):
+            previous_length = len(below_average)
+            chunks_per_dim = math.ceil(
+                np.pow(remaining_chunks, (1 / len(above_average)))
+            )
+
+            below_average.extend(
+                [d for d in above_average if self.data_shape[d] < chunks_per_dim]
+            )
+            above_average = [
+                d for d in above_average if self.data_shape[d] >= chunks_per_dim
+            ]
+
+            below_average_capacity = np.prod(
+                [self.data_shape[d] for d in below_average]
+            )
+            remaining_chunks = math.ceil(max_remaining_chunks / below_average_capacity)
+
+        assert chunks_per_dim > 0
+
+        above_average_counts = []
+        for d in above_average:
+            chunk_count = chunks_per_dim
+            chunk_shape = min(
+                self.data_shape[d],
+                math.ceil(self.data_shape[d] / chunk_count),
+            )
+            if chunk_shape * chunk_count >= (self.data_shape[d] + chunk_shape):
+                if chunk_shape == 1:
+                    chunk_count = self.data_shape[d]
+                else:
+                    chunk_shape -= 1
+                    chunk_count = math.ceil(self.data_shape[d] / chunk_shape)
+            above_average_counts.append((d, chunk_count))
+
+        return [(d, self.data_shape[d]) for d in below_average] + above_average_counts
+
     def __repr__(self) -> str:
-        return f"data: {self.data_shape} count: {self.count} p: {self.priorities} cshape: {self.chunk_shape} ccount: {self.chunk_count}"
+        return f"data: {self.data_shape} p: {self.priorities} cshape: {self.chunk_shape} ccount: {self.chunk_count}"
 
     def _chunk(self, dimension: int, count: int) -> slice:
         assert count * self.chunk_shape[dimension] < self.data_shape[dimension]
@@ -194,7 +322,7 @@ class Chunker:
             ),
         )
 
-    def chunks(self) -> Generator[tuple[slice, ...]]:
+    def chunks(self) -> Generator[list[slice]]:
 
         indices = np.zeros((self.n_dims,))
         for chunk_inx in range(self.n_chunks):
@@ -205,7 +333,7 @@ class Chunker:
                     continue
                 else:
                     break
-            yield tuple([self._chunk(ii, indices[ii]) for ii in range(self.n_dims)])
+            yield [self._chunk(ii, indices[ii]) for ii in range(self.n_dims)]
         return
 
 
@@ -250,102 +378,6 @@ class MemoryInfo:
         )
 
 
-def _chunk(
-    bounds: ImageBounds,
-    layers_per_chunk,
-    width_per_chunk,
-    height_per_chunk,
-    spectra_per_chunk,
-) -> list[ChunkBounds]:
-
-    chunks: list[ChunkBounds] = []
-    for ii, layer_start in enumerate(range(0, bounds.layer_count, layers_per_chunk)):
-        layer_end = min((ii + 1) * layers_per_chunk, bounds.layer_count)
-        for jj, width_start in enumerate(range(0, bounds.layer_width, width_per_chunk)):
-            width_end = min((jj + 1) * width_per_chunk, bounds.layer_width)
-            for kk, height_start in enumerate(
-                range(0, bounds.layer_height, height_per_chunk)
-            ):
-                height_end = min((kk + 1) * height_per_chunk, bounds.layer_height)
-                for ll, spectra_start in enumerate(
-                    range(0, bounds.spectrum_length, spectra_per_chunk)
-                ):
-                    spectra_end = min(
-                        (ll + 1) * spectra_per_chunk, bounds.spectrum_length
-                    )
-                    chunks.append(
-                        ChunkBounds(
-                            layer=slice(layer_start, layer_end),
-                            width=slice(width_start, width_end),
-                            height=slice(height_start, height_end),
-                            spectra=slice(spectra_start, spectra_end),
-                        )
-                    )
-    return chunks
-
-
-def chunk_image_dimensions(
-    width: int, height: int, chunks_per_image: int
-) -> tuple[int, int]:
-
-    if chunks_per_image > (width * height):
-        return 1, 1
-    chunks_per_image_dimension = math.ceil(math.sqrt(chunks_per_image))
-    if width < chunks_per_image_dimension:
-        width_per_chunk = 1
-        assert height > width
-        assert height >= chunks_per_image_dimension
-        height_per_chunk = max(1, math.floor(height / (chunks_per_image / width)))
-        return width_per_chunk, height_per_chunk
-    if height < chunks_per_image_dimension:
-        height_per_chunk = 1
-        assert width > height
-        assert width >= chunks_per_image_dimension
-        width_per_chunk = max(1, math.floor(width / (chunks_per_image / height)))
-        return width_per_chunk, height_per_chunk
-
-    assert width >= chunks_per_image_dimension
-    assert height >= chunks_per_image_dimension
-    width_per_chunk = math.floor(width / chunks_per_image_dimension)
-    height_per_chunk = math.floor(height / chunks_per_image_dimension)
-    return width_per_chunk, height_per_chunk
-
-
-def _chunk_images_then_spectra(
-    bounds: ImageBounds, chunks_per_layer: int, layers_per_chunk
-) -> list[ChunkBounds]:
-
-    width_per_chunk, height_per_chunk = chunk_image_dimensions(
-        bounds.layer_width, bounds.layer_height, chunks_per_layer
-    )
-    chunks_per_image = (bounds.layer_width / width_per_chunk) * (
-        bounds.layer_height / height_per_chunk
-    )
-    chunks_per_spectrum = math.ceil(chunks_per_layer / chunks_per_image)
-    spectra_per_chunk = max(1, math.floor(bounds.spectrum_length / chunks_per_spectrum))
-
-    return _chunk(
-        bounds, layers_per_chunk, width_per_chunk, height_per_chunk, spectra_per_chunk
-    )
-
-
-def _chunk_spectra_then_images(
-    bounds: ImageBounds, chunks_per_layer: int, layers_per_chunk: int
-) -> list[ChunkBounds]:
-
-    spectra_per_chunk = max(1, math.floor(bounds.spectrum_length / chunks_per_layer))
-    chunks_per_spectrum = bounds.spectrum_length / spectra_per_chunk
-    chunks_per_image = math.ceil(chunks_per_layer / chunks_per_spectrum)
-
-    width_per_chunk, height_per_chunk = chunk_image_dimensions(
-        bounds.layer_width, bounds.layer_height, chunks_per_image
-    )
-
-    return _chunk(
-        bounds, layers_per_chunk, width_per_chunk, height_per_chunk, spectra_per_chunk
-    )
-
-
 def calculate_chunks(
     chunk_count_min: int,
     gb_max: float | None,
@@ -355,22 +387,19 @@ def calculate_chunks(
 
     memory_info = MemoryInfo.calculate(chunk_count_min, gb_max, processors, bounds)
 
-    if memory_info.min_chunk_count < bounds.layer_count:
-        layers_per_chunk = max(
-            1, math.floor(bounds.layer_count / memory_info.min_chunk_count)
-        )
-        chunks_per_layer = 1
-    else:
-        layers_per_chunk = 1
-        chunks_per_layer = math.ceil(memory_info.min_chunk_count / bounds.layer_count)
-
-    spectra_chunks = _chunk_images_then_spectra(
-        bounds, chunks_per_layer, layers_per_chunk
+    spectra_chunker = Chunker.from_min_chunks(
+        data_shape=bounds.shape,
+        priorities=(1, 2, 2, 3),
+        min_chunk_count=max(1, memory_info.min_chunk_count),
     )
+    spectra_chunks = [ChunkBounds(*chunk) for chunk in spectra_chunker.chunks()]
 
-    image_chunks = _chunk_spectra_then_images(
-        bounds, chunks_per_layer, layers_per_chunk
+    image_chunker = Chunker.from_min_chunks(
+        data_shape=bounds.shape,
+        priorities=(1, 3, 3, 2),
+        min_chunk_count=max(1, memory_info.min_chunk_count),
     )
+    image_chunks = [ChunkBounds(*chunk) for chunk in image_chunker.chunks()]
 
     return spectra_chunks, image_chunks, memory_info
 
