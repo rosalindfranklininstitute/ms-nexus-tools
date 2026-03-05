@@ -1,8 +1,12 @@
 from typing import Any
 import argparse
-from dataclasses import field, Field, MISSING, fields
+from dataclasses import field, Field, MISSING, fields, dataclass
 from enum import Enum
+from pathlib import Path
 import sys
+import tomllib
+
+from icecream import ic
 
 
 class ArgType(Enum):
@@ -114,3 +118,32 @@ def add_argument(parser: argparse.ArgumentParser, fld: Field):
 def add_arguments(parser: argparse.ArgumentParser, dcls):
     for f in fields(dcls):
         add_argument(parser, f)
+
+
+@dataclass
+class ConfigFileArgs:
+    config: Path = arg_field(
+        "-c",
+        doc="The path to a configuration file. This config file can be used instead of passing files into the command line. It is a TOML formatted file. The arguments will be read out of the name of the program.",
+        default=None,
+        required=False,
+    )
+
+    @classmethod
+    def parse_args(
+        cls, parser: argparse.ArgumentParser, args=None
+    ) -> tuple[argparse.Namespace, dict[str, Any]]:
+        args = args if args is not None else sys.argv[1:]
+        config_parser = argparse.ArgumentParser("config_parser")
+        config_parser.add_argument("-c", "--config", default=None, type=Path)
+        config_args, remaining_args = config_parser.parse_known_args(args)
+        config_dict = {}
+        config_file_args = []
+        if config_args.config is not None:
+            with open(config_args.config, "rb") as fle:
+                config_dict = tomllib.load(fle)
+            for k, v in config_dict[parser.prog].items():
+                config_file_args.extend([f"--{k}", str(v)])
+            del config_dict[parser.prog]
+
+        return parser.parse_args([*config_file_args, *remaining_args]), config_dict
