@@ -19,16 +19,14 @@ from nexusformat.nexus.tree import (
     NXinstrument,
 )
 
+from icecream import ic
+
 from ..lib.nxs import ImageAxis
 from ..lib import Timer, time_this, utils
 from ..lib.chunking import (
     ImageBounds,
     ChunkBounds,
-    calculate_chunks,
-    OnDiskArgs,
-    InMemoryArgs,
-    process_chunk_on_disk,
-    process_chunk_in_memory,
+    calculate_chunks_from_memory,
 )
 from .api import arg_field, ArgType
 
@@ -271,6 +269,72 @@ def queue_consumer(ii: int, function, queue: Union[mQueue, tQueue]):
     print(f"Queue consumer {ii + 1} finishing.")
 
 
+@dataclass
+class OnDiskArgs:
+    id: int
+    vds_in: Path
+    data_path: str
+    chunk: ChunkBounds
+    hdf_out: Path
+
+
+def process_chunk_on_disk(args: OnDiskArgs):
+    if len(args.chunk.layer_range()) == 0 or len(args.chunk.spectra_range()) == 0:
+        return
+
+    entry = NXentry()
+    process = NXprocess()
+    process.attrs["name"] = "collect {args.data_path}"
+    process.input = NXparameters(
+        hdf_in_file=args.vds_in,
+        id=args.id,
+        data_path=args.data_path,
+        **args.chunk.to_bound_dict(),
+    )
+    entry["process"] = process
+
+    try:
+        entry["data"] = NXfield(
+            dtype="int32",
+            shape=[
+                args.chunk.layer_count(),
+                args.chunk.layer_width(),
+                args.chunk.layer_height(),
+                args.chunk.spectrum_length(),
+            ],
+        )
+
+        with h5.File(args.vds_in, "r") as hdf:
+            entry.data[:, :, :, :] = hdf[args.data_path][
+                args.chunk.layer,
+                args.chunk.width,
+                args.chunk.height,
+                args.chunk.spectra,
+            ]
+    except:
+        print(args.chunk, flush=True)
+        raise
+
+    entry.save(args.hdf_out)
+
+
+@dataclass
+class InMemoryArgs:
+    id: int
+    vds_in: h5.File
+    data_path: str
+    chunk: ChunkBounds
+    hdf_out: NXdata
+
+
+def process_chunk_in_memory(args: InMemoryArgs):
+    args.hdf_out.signal[
+        args.chunk.layer, args.chunk.width, args.chunk.height, args.chunk.spectra
+    ] = args.vds_in[args.data_path][
+        args.chunk.layer, args.chunk.width, args.chunk.height, args.chunk.spectra
+    ]
+
+
 def process_chunks_on_disk(
     chunks: list[ChunkBounds],
     data_path: str,
@@ -402,9 +466,11 @@ def process(args: ProcessArgs):
         with time_this("metadata"):
             entry["instrument"], bounds, axis = read_metadata(args.hdf_in_path)
 
-        spectra_chunks, image_chunks, memory_info = calculate_chunks(
+        spectra_chunks, image_chunks, memory_info = calculate_chunks_from_memory(
             args.chunk_count, args.max_memory, args.processors, bounds
         )
+        ic(len(spectra_chunks))
+        ic(spectra_chunks[0].shape())
 
         entry["spectra"] = NXsubentry(
             NXdata(
@@ -467,20 +533,21 @@ def process(args: ProcessArgs):
                             processes=args.processors,
                         )
                 else:
-                    if args.do_spectra:
-                        process_chunks_in_memory(
-                            chunks=spectra_chunks,
-                            data_path="spectra",
-                            vds_in=vds,
-                            hdf_out=entry.spectra.data,
-                            processes=args.processors,
-                        )
+                    with entry.nxfile:
+                        if args.do_spectra:
+                            process_chunks_in_memory(
+                                chunks=spectra_chunks,
+                                data_path="spectra",
+                                vds_in=vds,
+                                hdf_out=entry.spectra.data,
+                                processes=args.processors,
+                            )
 
-                    if args.do_images:
-                        process_chunks_in_memory(
-                            chunks=image_chunks,
-                            data_path="images",
-                            vds_in=vds,
-                            hdf_out=entry.images.data,
-                            processes=args.processors,
-                        )
+                        if args.do_images:
+                            process_chunks_in_memory(
+                                chunks=image_chunks,
+                                data_path="images",
+                                vds_in=vds,
+                                hdf_out=entry.images.data,
+                                processes=args.processors,
+                            )

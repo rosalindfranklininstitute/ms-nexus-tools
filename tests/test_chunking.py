@@ -18,7 +18,7 @@ def test_memory_info(
     image_bounds = mnxlib.chunking.ImageBounds(layers, width, height, spectra)
 
     memory = mnxlib.chunking.MemoryInfo.calculate(
-        chunk_count_min, gb_max, processors, image_bounds
+        chunk_count_min, gb_max, processors, image_bounds.to_bounds()
     )
 
     assert memory.min_chunk_count >= chunk_count_min
@@ -43,8 +43,8 @@ def test_calculate_chunks(
 ):
     image_bounds = mnxlib.chunking.ImageBounds(layers, width, height, spectra)
 
-    spectra_chunks, image_chunks, memory = mnxlib.chunking.calculate_chunks(
-        chunk_count_min, gb_max, processors, image_bounds
+    spectra_chunks, image_chunks, memory = mnxlib.chunking.calculate_chunks_from_memory(
+        chunk_count_min, gb_max, processors, image_bounds.to_bounds()
     )
 
     assert len(spectra_chunks) == len(set(spectra_chunks))

@@ -15,8 +15,6 @@ from nexusformat.nexus.tree import (
     NXlinkfield,
 )
 
-from .chunking import ImageBounds
-
 
 @dataclass
 class ImageAxis:
@@ -30,9 +28,8 @@ class ImageAxis:
 
 
 class NexusFile:
-    def __init__(self, filename: Path, bounds: ImageBounds, mode: str = "r"):
+    def __init__(self, filename: Path, mode: str = "r"):
         self.filename = filename
-        self.bounds = bounds
 
         self._mode = mode
         self._file = nxload(filename, mode)
