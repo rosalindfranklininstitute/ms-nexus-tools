@@ -17,6 +17,8 @@ from nexusformat.nexus.tree import (
     NXlinkfield,
     NXsubentry,
     NXinstrument,
+    NXparameters,
+    NXprocess,
 )
 
 from icecream import ic
@@ -28,7 +30,7 @@ from ..lib.chunking import (
     ChunkBounds,
     calculate_chunks_from_memory,
 )
-from .api import arg_field, ArgType
+from .args import arg_field, ArgType
 
 timer_interval = 30
 
@@ -467,7 +469,7 @@ def process(args: ProcessArgs):
             entry["instrument"], bounds, axis = read_metadata(args.hdf_in_path)
 
         spectra_chunks, image_chunks, memory_info = calculate_chunks_from_memory(
-            args.chunk_count, args.max_memory, args.processors, bounds
+            args.chunk_count, args.max_memory, args.processors, bounds.to_bounds()
         )
         ic(len(spectra_chunks))
         ic(spectra_chunks[0].shape())

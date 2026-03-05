@@ -1,12 +1,12 @@
 import argparse
 
-from ..api import ion, api
+from ..api import ion, args as nxargs
 
 
 def ion2rfi():
     parser = argparse.ArgumentParser(prog="ION2RFI")
 
-    api.add_arguments(parser, ion.ProcessArgs)
+    nxargs.add_arguments(parser, ion.ProcessArgs)
 
     args = parser.parse_args()
 

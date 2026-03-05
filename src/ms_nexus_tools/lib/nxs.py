@@ -23,8 +23,11 @@ class ImageAxis:
     y_axis: NXfield
     mass_axis: NXfield
 
-    def as_list(self):
+    def as_list(self) -> list[NXfield]:
         return [self.layer_axis, self.x_axis, self.y_axis, self.mass_axis]
+
+    def as_tuple(self) -> tuple[NXfield, ...]:
+        return (self.layer_axis, self.x_axis, self.y_axis, self.mass_axis)
 
 
 class NexusFile:
@@ -151,7 +154,7 @@ def write_from_data(
         mass_axis=NXfield(mass, name="mass", unit=mass_unit),
     )
 
-    nxs = NexusFile(out_path, ImageBounds(*data.shape), mode="w")
+    nxs = NexusFile(out_path, mode="w")
 
     nxs.root["process"] = NXprocess()
     nxs.root["process"].attrs["name"] = "Nexus From data"

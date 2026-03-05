@@ -10,12 +10,18 @@ from icecream import ic
 
 
 class ArgType(Enum):
+    NOT_AN_ARG = 0
     AUTOMATIC = 1
     POSITIONAL = 2
     EXPLICIT_ONLY = 3
 
 
-def arg_field(*args, arg_type: ArgType = ArgType.AUTOMATIC, **kw_args):
+def no_arg_field(**kw_args):
+    kw_args.update(dict(metadata=dict(arg_type=ArgType.NOT_AN_ARG)))
+    return field(**kw_args)
+
+
+def arg_field(*args, arg_type: ArgType = ArgType.AUTOMATIC, defer=False, **kw_args):
 
     field_keys = (
         "default",
@@ -54,6 +60,7 @@ def arg_field(*args, arg_type: ArgType = ArgType.AUTOMATIC, **kw_args):
 
     field_kw_args["metadata"]["args"] = args
     field_kw_args["metadata"]["arg_type"] = arg_type
+    field_kw_args["metadata"]["defer"] = defer
 
     if "action" in kw_args:
         action = kw_args["action"]
@@ -67,6 +74,11 @@ def arg_field(*args, arg_type: ArgType = ArgType.AUTOMATIC, **kw_args):
 
 def add_argument(parser: argparse.ArgumentParser, fld: Field):
     try:
+        if "arg_type" not in fld.metadata:
+            return None, None
+        elif fld.metadata["arg_type"] == ArgType.NOT_AN_ARG:
+            return None, None
+
         kw_args: dict[str, Any] = {
             "type": fld.type,
         }
@@ -93,6 +105,7 @@ def add_argument(parser: argparse.ArgumentParser, fld: Field):
             del kw_args["doc"]
         del kw_args["args"]
         del kw_args["arg_type"]
+        del kw_args["defer"]
 
         if fld.metadata["arg_type"] != ArgType.POSITIONAL:
             kw_args["dest"] = fld.name
@@ -110,14 +123,22 @@ def add_argument(parser: argparse.ArgumentParser, fld: Field):
                 str(kw_args["help"]) + f"\nDefault '{kw_args['default']}'."
             )
 
-        return parser.add_argument(*args, **kw_args)
+        if fld.metadata["defer"]:
+            return None, (args, kw_args)
+
+        return parser.add_argument(*args, **kw_args), ()
     except BaseException as e:
         raise RuntimeError(f"Could not process field '{fld.name}'") from e
 
 
 def add_arguments(parser: argparse.ArgumentParser, dcls):
+    defered = []
     for f in fields(dcls):
-        add_argument(parser, f)
+        action, args = add_argument(parser, f)
+        if action is None and args is not None:
+            defered.append(args)
+    for args in defered:
+        parser.add_argument(*args[0], **args[1])
 
 
 @dataclass
@@ -134,7 +155,7 @@ class ConfigFileArgs:
         cls, parser: argparse.ArgumentParser, args=None
     ) -> tuple[argparse.Namespace, dict[str, Any]]:
         args = args if args is not None else sys.argv[1:]
-        config_parser = argparse.ArgumentParser("config_parser")
+        config_parser = argparse.ArgumentParser("config_parser", add_help=False)
         config_parser.add_argument("-c", "--config", default=None, type=Path)
         config_args, remaining_args = config_parser.parse_known_args(args)
         config_dict = {}

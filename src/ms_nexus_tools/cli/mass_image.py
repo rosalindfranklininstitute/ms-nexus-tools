@@ -1,12 +1,12 @@
 import argparse
 
-from ..api import mass_image, api
+from ..api import mass_image, args as nxargs
 
 
 def massimage():
     parser = argparse.ArgumentParser(prog="mass_image")
 
-    api.add_arguments(parser, mass_image.ProcessArgs)
+    nxargs.add_arguments(parser, mass_image.ProcessArgs)
 
     args = parser.parse_args()
 

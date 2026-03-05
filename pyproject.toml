@@ -53,3 +53,5 @@ testpaths = ["./tests"]
 [tool.typos.files]
 extend-exclude=["elements.py", "SIS_20260218_Elements_and_Isotopes.csv"]
 
+[tool.ty.analysis]
+allowed-unresolved-imports = ["nexusformat.nexus.tree.NXparameters" ,"nexusformat.nexus.tree.NXinstrument"]

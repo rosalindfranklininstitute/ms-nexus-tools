@@ -1,9 +1,11 @@
 import argparse
 from dataclasses import dataclass
 
-from ms_nexus_tools.api import api as nxargs
+from ms_nexus_tools.api import args as nxargs
 
 import pytest
+
+from icecream import ic
 
 
 @dataclass
@@ -96,3 +98,16 @@ def test_addition_from_config(config_file):
         parser, ["--config", str(config_file), "--a", "1", "--b", "2"]
     )
     assert config_dict == dict(other=dict(z=12))
+
+
+def test_help(capsys):
+    parser = argparse.ArgumentParser(prog="test")
+
+    nxargs.add_arguments(parser, TestArgs)
+
+    with pytest.raises(SystemExit):
+        args, config_dict = TestArgs.parse_args(parser, ["--help"])
+
+    captured = capsys.readouterr()
+
+    assert captured.out == parser.format_help()

@@ -9,7 +9,7 @@ class Isotope(NamedTuple):
     accurate: float
     abundance: float
 
-    def __lt__(self, other: Self) -> bool:
+    def __lt__(self, other):
         return self.accurate < other.accurate
 
 
