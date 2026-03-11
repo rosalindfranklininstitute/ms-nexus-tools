@@ -34,6 +34,14 @@ class Chunk(list[slice]):
         return tuple([c.stop - c.start for c in self])
 
 
+class NoDataError(Exception):
+    pass
+
+
+class InnerDataNotContainedError(Exception):
+    pass
+
+
 @dataclass
 class ContainedBounds:
     outer_shape: Shape
@@ -55,7 +63,12 @@ class ContainedBounds:
         assert len(self.outer_shape) == len(self.offset)
 
         for ii, c in enumerate(self.inner_shape):
-            assert c + self.offset[ii] <= self.outer_shape[ii]
+            if c == 0 or self.outer_shape[ii] == 0:
+                raise NoDataError(f"No data in dimension {ii + 1}.")
+            elif c + self.offset[ii] > self.outer_shape[ii]:
+                raise InnerDataNotContainedError(
+                    f"Inner shape not contained in outer shape on diemsnion {ii + 1}."
+                )
 
         self.dimensions = len(self.outer_shape)
 

@@ -12,14 +12,11 @@ dependencies = [
     "h5py>=3.15.1",
     "hypothesis>=6.151.7",
     "icecream>=2.1.10",
-    "line-profiler>=5.0.1",
     "matplotlib>=3.10.8",
     "nexusformat>=2.0.1",
     "numpy>=2.4.2",
-    "pytest>=9.0.2",
-    "pytest-autoprofile>=0.19.0",
+    "pyside6>=6.10.2",
     "scipy>=1.17.0",
-    "snakeviz>=2.2.2",
     "tqdm>=4.67.3",
 ]
 license = "Apache-2.0"
@@ -55,3 +52,12 @@ extend-exclude=["elements.py", "SIS_20260218_Elements_and_Isotopes.csv"]
 
 [tool.ty.analysis]
 allowed-unresolved-imports = ["nexusformat.nexus.tree.NXparameters" ,"nexusformat.nexus.tree.NXinstrument"]
+
+[dependency-groups]
+dev = [
+    "line-profiler>=5.0.1",
+    "pytest>=9.0.2",
+    "pytest-autoprofile>=0.19.0",
+    "pytest-cov>=7.0.0",
+    "snakeviz>=2.2.2",
+]

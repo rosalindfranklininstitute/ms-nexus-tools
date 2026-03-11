@@ -113,6 +113,9 @@ def add_argument(parser: argparse.ArgumentParser, fld: Field):
         if fld.default != MISSING:
             kw_args["default"] = fld.default
 
+        if fld.default_factory != MISSING:
+            kw_args["default"] = fld.default_factory()
+
         if "action" in kw_args:
             if kw_args["action"] == "store_true" or kw_args["action"] == "store_false":
                 del kw_args["default"]
