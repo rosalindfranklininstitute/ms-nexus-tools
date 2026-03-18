@@ -76,7 +76,7 @@ def process(args: ProcessArgs):
     match args.filetype:
         case DataType.ION_H5:
             _, image_bounds, image_axis = ion.read_metadata(args.hdf_in_path)
-            mass_axis = image_axis.mass_axis
+            mass_axis = image_axis[3][0]
         case DataType.ION_VDS:
             assert args.indexing != IndexType.MASS
             mass_axis = None

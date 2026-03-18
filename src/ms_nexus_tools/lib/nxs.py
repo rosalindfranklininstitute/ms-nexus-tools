@@ -1,4 +1,4 @@
-from typing import Any, Self
+from typing import Any, Self, NamedTuple
 from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
@@ -17,17 +17,44 @@ from nexusformat.nexus.tree import (
 
 
 @dataclass
-class ImageAxis:
-    layer_axis: NXfield
-    x_axis: NXfield
-    y_axis: NXfield
-    mass_axis: NXfield
+class Axis:
+    name: str
+    indices: list[int]
+    field: NXfield
 
-    def as_list(self) -> list[NXfield]:
-        return [self.layer_axis, self.x_axis, self.y_axis, self.mass_axis]
+    @staticmethod
+    def create(values, name: str, indices: list[int], unit: str | None = None):
+        if unit is not None:
+            field = NXfield(values, name=name)
+        else:
+            field = NXfield(values, name=name, unit=unit)
+        return Axis(name=name, indices=indices, field=field)
 
-    def as_tuple(self) -> tuple[NXfield, ...]:
-        return (self.layer_axis, self.x_axis, self.y_axis, self.mass_axis)
+    def add_to_group(self, group: NXdata):
+        group.attrs[f"{self.name}_indices"] = self.indices
+        group[self.name] = self.field
+
+    def __len__(self) -> int:
+        return len(self.field)
+
+    def __getitem__(self, index):
+        return self.field[index]
+
+
+class GenericAxis(list[list[Axis]]):
+    def default_list(self) -> list[str]:
+        return [v[0].name for v in self]
+
+    def list_all(self) -> list[Axis]:
+        results = []
+        for v in self:
+            results.extend(v)
+        return results
+
+    def add_to_group(self, group: NXdata):
+        group.attrs["axes"] = self.default_list()
+        for ax in self.list_all():
+            ax.add_to_group(group)
 
 
 class NexusFile:
@@ -81,24 +108,26 @@ class NexusFile:
     def set_data(
         self,
         field: NXfield,
-        axes: tuple[NXfield, ...],
+        axes: GenericAxis,
         errors: NXfield | None = None,
         weights: NXfield | None = None,
     ) -> NXdata:
-        self.root["data"] = NXdata(field, axes=axes, errors=errors, weight=weights)
+        self.root["data"] = NXdata(field, errors=errors, weight=weights)
+        axes.add_to_group(self.root["data"])
         return self.root["data"]
 
     def create_subentry(
         self,
         name: str,
         field: NXfield,
-        axes: tuple[NXfield, ...],
+        axes: GenericAxis,
         errors: NXfield | None = None,
         weights: NXfield | None = None,
     ) -> NXsubentry:
         self.root[name] = NXsubentry(
-            NXdata(signal=field, axes=axes, errors=errors, weight=weights)
+            NXdata(signal=field, errors=errors, weight=weights)
         )
+        axes.add_to_group(self.root[name]["data"])
         return self.root[name]
 
 
@@ -143,15 +172,33 @@ def write_from_data(
     compression: str = "gzip",
     compression_level: int = 4,
 ) -> NexusFile:
-    axis = ImageAxis(
-        layer_axis=NXfield(np.arange(1, data.shape[0] + 1, 1.0), name="layer"),
-        x_axis=NXfield(
-            np.arange(0, data.shape[1], 1.0) * x_microns, name="x", unit="micron"
-        ),
-        y_axis=NXfield(
-            np.arange(0, data.shape[2], 1.0) * y_microns, name="y", unit="micron"
-        ),
-        mass_axis=NXfield(mass, name="mass", unit=mass_unit),
+    axes = GenericAxis(
+        [
+            [
+                Axis.create(
+                    values=np.arange(1, data.shape[0] + 1, 1.0),
+                    name="layer",
+                    indices=[1],
+                )
+            ],
+            [
+                Axis.create(
+                    values=np.arange(0, data.shape[1], 1.0) * x_microns,
+                    name="x",
+                    unit="micron",
+                    indices=[2],
+                )
+            ],
+            [
+                Axis.create(
+                    values=np.arange(0, data.shape[2], 1.0) * y_microns,
+                    name="y",
+                    unit="micron",
+                    indices=[2],
+                )
+            ],
+            [Axis.create(values=mass, name="mass", unit=mass_unit, indices=[3])],
+        ]
     )
 
     nxs = NexusFile(out_path, mode="w")
@@ -172,7 +219,7 @@ def write_from_data(
             compression=compression,
             compression_opts=compression_level,
         ),
-        axes=axis.as_list(),
+        axes=axes,
     )
     nxs.root.data.signal[:] = data[:]
 

@@ -23,7 +23,7 @@ from nexusformat.nexus.tree import (
 
 from icecream import ic
 
-from ..lib.nxs import ImageAxis
+from ..lib.nxs import GenericAxis, Axis
 from ..lib import Timer, time_this, utils
 from ..lib.chunking import (
     ImageBounds,
@@ -117,7 +117,7 @@ def write_metadata(
     hdf_out_path: Path,
     instrument: NXinstrument,
     image_bounds: IONImageBounds,
-    image_axis: ImageAxis,
+    image_axis: GenericAxis,
     append: bool = False,
 ) -> None:
     with h5.File(hdf_out_path, "a" if append else "w") as hdf:
@@ -138,14 +138,14 @@ def write_metadata(
         assign_or_assert(image_bounds.layer_count, "Layers")
         assign_or_assert(image_bounds.spectrum_length, "SpectrumLength")
 
-        assign_or_assert(image_axis.x_axis[1], "ImageMicronsX")
-        assign_or_assert(image_axis.y_axis[1], "ImageMicronsY")
+        assign_or_assert(image_axis[1][0].field[1], "ImageMicronsX")
+        assign_or_assert(image_axis[2][0].field[1], "ImageMicronsY")
 
         hdf.require_dataset(
             "ExperimentDetails/MassArray",
             dtype="int32",
             shape=(1, image_bounds.spectrum_length),
-            data=image_axis.mass_axis[:],
+            data=image_axis[3][0].field[:],
             exact=True,
         )
 
@@ -191,7 +191,7 @@ def write_image(
 
 def read_metadata(
     hdf_in_path: Path,
-) -> tuple[NXinstrument, IONImageBounds, ImageAxis]:
+) -> tuple[NXinstrument, IONImageBounds, GenericAxis]:
     with h5.File(hdf_in_path, "r") as hdfinfile:
         metadata = hdfinfile["ExperimentDetails"].attrs
         chunk_height = metadata["LayerDimensionX"][0]
@@ -207,20 +207,30 @@ def read_metadata(
         for key, value in metadata.items():
             instrument.attrs[key] = value
 
-        mass_axis = NXfield(hdfinfile["ExperimentDetails/MassArray"][:], name="mass")
+        mass_axis = Axis.create(
+            values=hdfinfile["ExperimentDetails/MassArray"][:], name="mass", indices=[3]
+        )
 
         image_bounds = IONImageBounds(
             int(layer_count), int(layer_width), int(layer_height), int(spectrum_length)
         )
-    layer_axis = NXfield(np.arange(1, layer_count + 1, 1.0), name="layer")
-    x_axis = NXfield(
-        np.arange(0, chunk_width, 1.0) * x_microns, name="x", unit="micron"
+    layer_axis = Axis.create(
+        values=np.arange(1, layer_count + 1, 1.0), name="layer", indices=[0]
     )
-    y_axis = NXfield(
-        np.arange(0, chunk_height, 1.0) * y_microns, name="y", unit="micron"
+    x_axis = Axis.create(
+        values=np.arange(0, chunk_width, 1.0) * x_microns,
+        name="x",
+        unit="micron",
+        indices=[1],
+    )
+    y_axis = Axis.create(
+        values=np.arange(0, chunk_height, 1.0) * y_microns,
+        name="y",
+        unit="micron",
+        indices=[2],
     )
 
-    image_axis = ImageAxis(layer_axis, x_axis, y_axis, mass_axis)
+    image_axis = GenericAxis([[layer_axis], [x_axis], [y_axis], [mass_axis]])
     return instrument, image_bounds, image_axis
 
 
@@ -482,9 +492,9 @@ def process(args: ProcessArgs):
                     compression=args.compression,
                     compression_opts=args.compression_level,
                 ),
-                axis.as_list(),
             )
         )
+        axis.add_to_group(entry["spectra/data"])
 
         entry["images"] = NXsubentry(
             NXdata(
@@ -494,13 +504,12 @@ def process(args: ProcessArgs):
                     compression=args.compression,
                     compression_opts=args.compression_level,
                 ),
-                axis.as_list(),
             )
         )
+        axis.add_to_group(entry["images/data"])
 
-        entry["data"] = NXdata(
-            NXlinkfield(entry["spectra/data/signal"]), axis.as_list()
-        )
+        entry["data"] = NXdata(NXlinkfield(entry["spectra/data/signal"]))
+        axis.add_to_group(entry["data"])
         with time_this("VDS"):
             hdf_vds_path = args.tmp_data_path.joinpath("vds.h5")
             if args.do_spectra:

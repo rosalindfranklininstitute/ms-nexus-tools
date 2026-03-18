@@ -412,17 +412,3 @@ def calculate_chunks_from_memory(
     image_chunks = [ChunkBounds(*chunk) for chunk in image_chunker.chunks()]
 
     return spectra_chunks, image_chunks, memory_info
-
-
-if __name__ == "__main__":
-    chunker = Chunker.from_min_chunks(
-        data_shape=(100, 100, 100), priorities=(1, 2, 3), min_chunk_count=10000
-    )
-
-    n = 500
-    for i in range(n):
-        chunks = [c for c in chunker.chunks()]
-        tuple_chunks = [c for c in chunker.chunks_tuple()]
-        list_chunks = [c for c in chunker.chunks_list()]
-        if ((100 * i) / n) % 10 == 0:
-            print(i, n)

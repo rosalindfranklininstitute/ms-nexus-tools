@@ -33,17 +33,40 @@ def create_file():
                     for ss in range(bounds.spectrum_length)
                 ]
 
-    image_axis = nxapi.ion.ImageAxis(
-        layer_axis=NXfield(np.arange(1, bounds.layer_count + 1, 1.0), name="layer"),
-        x_axis=NXfield(
-            np.arange(0, bounds.layer_width, 1.0) * x_microns, name="x", unit="micron"
-        ),
-        y_axis=NXfield(
-            np.arange(0, bounds.layer_height, 1.0) * y_microns, name="y", unit="micron"
-        ),
-        mass_axis=NXfield(
-            [ss**2 for ss in range(bounds.spectrum_length)], name="mass", unit="m/z"
-        ),
+    image_axis = nxlib.nxs.GenericAxis(
+        [
+            [
+                nxlib.nxs.Axis.create(
+                    values=np.arange(1, bounds.layer_count + 1, 1.0),
+                    name="layer",
+                    indices=[0],
+                )
+            ],
+            [
+                nxlib.nxs.Axis.create(
+                    values=np.arange(0, bounds.layer_width, 1.0) * x_microns,
+                    name="x",
+                    unit="micron",
+                    indices=[1],
+                )
+            ],
+            [
+                nxlib.nxs.Axis.create(
+                    values=np.arange(0, bounds.layer_height, 1.0) * y_microns,
+                    name="y",
+                    unit="micron",
+                    indices=[2],
+                )
+            ],
+            [
+                nxlib.nxs.Axis.create(
+                    values=[ss**2 for ss in range(bounds.spectrum_length)],
+                    name="mass",
+                    unit="m/z",
+                    indices=[3],
+                )
+            ],
+        ]
     )
 
     path = Path("tmp_test_data")

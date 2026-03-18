@@ -81,21 +81,40 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
                         for ss in range(bounds.spectrum_length)
                     ]
 
-        image_axis = nxapi.ion.ImageAxis(
-            layer_axis=NXfield(np.arange(1, bounds.layer_count + 1, 1.0), name="layer"),
-            x_axis=NXfield(
-                np.arange(0, bounds.layer_width, 1.0) * x_microns,
-                name="x",
-                unit="micron",
-            ),
-            y_axis=NXfield(
-                np.arange(0, bounds.layer_height, 1.0) * y_microns,
-                name="y",
-                unit="micron",
-            ),
-            mass_axis=NXfield(
-                [ss**2 for ss in range(bounds.spectrum_length)], name="mass", unit="m/z"
-            ),
+        image_axis = nxlib.nxs.GenericAxis(
+            [
+                [
+                    nxlib.nxs.Axis.create(
+                        values=np.arange(1, bounds.layer_count + 1, 1.0),
+                        name="layer",
+                        indices=[0],
+                    )
+                ],
+                [
+                    nxlib.nxs.Axis.create(
+                        values=np.arange(0, bounds.layer_width, 1.0) * x_microns,
+                        name="x",
+                        unit="micron",
+                        indices=[1],
+                    )
+                ],
+                [
+                    nxlib.nxs.Axis.create(
+                        values=np.arange(0, bounds.layer_height, 1.0) * y_microns,
+                        name="y",
+                        unit="micron",
+                        indices=[2],
+                    )
+                ],
+                [
+                    nxlib.nxs.Axis.create(
+                        values=[ss**2 for ss in range(bounds.spectrum_length)],
+                        name="mass",
+                        unit="m/z",
+                        indices=[3],
+                    )
+                ],
+            ],
         )
         uncompressed_size = (
             bounds.layer_count
@@ -131,7 +150,7 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
         path.joinpath("times.json"), ("data", str(nxlib.filetypes.DataType.NEXUS))
     ) as tmr:
         nxlib.nxs.write_from_data(
-            nxs_path, raw_data, x_microns, y_microns, np.array(image_axis.mass_axis)
+            nxs_path, raw_data, x_microns, y_microns, np.array(image_axis[3][0])
         )
         tmr.add_user_data(**{"size (bytes)": os.stat(nxs_path).st_size})
 
