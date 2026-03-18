@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, get_args
 import argparse
 from dataclasses import field, Field, MISSING, fields, dataclass
 from enum import Enum
@@ -79,9 +79,8 @@ def add_argument(parser: argparse.ArgumentParser, fld: Field):
         elif fld.metadata["arg_type"] == ArgType.NOT_AN_ARG:
             return None, None
 
-        kw_args: dict[str, Any] = {
-            "type": fld.type,
-        }
+        kw_args: dict[str, Any] = {}
+
         assert sys.version_info.major == 3
         if sys.version_info.minor < 14:
             kw_args["help"] = fld.metadata["doc"]
@@ -119,7 +118,12 @@ def add_argument(parser: argparse.ArgumentParser, fld: Field):
         if "action" in kw_args:
             if kw_args["action"] == "store_true" or kw_args["action"] == "store_false":
                 del kw_args["default"]
-                del kw_args["type"]
+            elif kw_args["action"] == "append":
+                inner_type = get_args(fld.type)
+                assert len(inner_type) == 1
+                kw_args["type"] = inner_type[0]
+        else:
+            kw_args["type"] = fld.type
 
         if "help" in kw_args and "default" in kw_args:
             kw_args["help"] = (
@@ -166,8 +170,15 @@ class ConfigFileArgs:
         if config_args.config is not None:
             with open(config_args.config, "rb") as fle:
                 config_dict = tomllib.load(fle)
-            for k, v in config_dict[parser.prog].items():
-                config_file_args.extend([f"--{k}", str(v)])
-            del config_dict[parser.prog]
+            if parser.prog in config_dict:
+                for k, v in config_dict[parser.prog].items():
+                    if isinstance(v, bool):
+                        config_file_args.extend([f"--{k}"])
+                    elif isinstance(v, list):
+                        for vv in v:
+                            config_file_args.extend([f"--{k}", vv])
+                    else:
+                        config_file_args.extend([f"--{k}", str(v)])
+                del config_dict[parser.prog]
 
         return parser.parse_args([*config_file_args, *remaining_args]), config_dict

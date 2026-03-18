@@ -14,7 +14,7 @@ def approximate_gb(int4_count: float) -> float:
 
 
 def approximate_int4_count(gb: float) -> float:
-    return (gb / 4) * 1024 * 1024 * 1024
+    return (gb / 4.0) * 1024 * 1024 * 1024
 
 
 def _count_priorities(
@@ -199,6 +199,24 @@ class Chunker:
 
         return [(d, self.data_shape[d]) for d in below_average] + above_average_counts
 
+    @staticmethod
+    def from_chunk_shape(
+        data_shape: Shape,
+        chunk_shape: Shape,
+    ) -> "Chunker":
+        chunker = Chunker()
+        assert len(data_shape) == len(chunk_shape)
+        chunker.data_shape = data_shape
+        chunker.priorities = tuple([1 for _ in data_shape])
+        chunker.n_dims = len(chunker.data_shape)
+
+        chunker.chunk_shape = chunk_shape
+        chunker.chunk_count = tuple(
+            [math.ceil(d / c) for c, d in zip(chunk_shape, data_shape)]
+        )
+        chunker.n_chunks = int(np.prod(chunker.chunk_count))
+        return chunker
+
     def __repr__(self) -> str:
         return f"data: {self.data_shape} p: {self.priorities} cshape: {self.chunk_shape} ccount: {self.chunk_count}"
 
@@ -228,33 +246,13 @@ class Chunker:
             yield Chunk([self._chunk(ii, indices[ii]) for ii in range(self.n_dims)])
         return
 
-    def chunks_tuple(self) -> Generator[tuple[int, ...]]:
-
-        indices = np.zeros((self.n_dims,))
-        for chunk_inx in range(self.n_chunks):
-            for ii in range(self.n_dims):
-                indices[ii] += 1
-                if indices[ii] >= self.chunk_count[ii]:
-                    indices[ii] = 0
-                    continue
-                else:
-                    break
-            yield tuple([self._chunk(ii, indices[ii]) for ii in range(self.n_dims)])
-        return
-
-    def chunks_list(self) -> Generator[list[int]]:
-
-        indices = np.zeros((self.n_dims,))
-        for chunk_inx in range(self.n_chunks):
-            for ii in range(self.n_dims):
-                indices[ii] += 1
-                if indices[ii] >= self.chunk_count[ii]:
-                    indices[ii] = 0
-                    continue
-                else:
-                    break
-            yield [self._chunk(ii, indices[ii]) for ii in range(self.n_dims)]
-        return
+    def chunk_for_position(self, position: tuple[int, ...]) -> Chunk:
+        return Chunk(
+            [
+                self._chunk(ii, p // self.chunk_shape[ii])
+                for ii, p in enumerate(position)
+            ]
+        )
 
 
 @dataclass

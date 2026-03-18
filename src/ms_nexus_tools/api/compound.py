@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from .args import arg_field, ArgType
 from ..lib import elements
 
+from icecream import ic
+
 
 @dataclass
 class ProcessArgs:
@@ -25,9 +27,9 @@ def process(args: ProcessArgs) -> CompoundProperties:
 
     properties = CompoundProperties(args.compound)
 
-    for val in re.finditer(r"([a-zA-Z]+)(\d+)?", properties.formula):
+    for val in re.finditer(r"([A-Z][a-z]*)(\d*)?", properties.formula):
         element, count = val.groups()
-        count = int(count) if count is not None else 1
+        count = int(count) if count is not None and len(count) > 0 else 1
         isotopes = elements.elements[element].isotopes
         properties.average_mass += (
             count * sum([iso.accurate * iso.abundance for iso in isotopes]) / 100

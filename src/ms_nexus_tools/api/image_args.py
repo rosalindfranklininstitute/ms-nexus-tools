@@ -17,12 +17,14 @@ class LayerSliceArgs:
     end_layer: int = arg_field(
         "-el",
         doc="The end layer for the spectrum.",
-        default=-1,
+        default=None,
         defer=True,
     )
 
-    def calculate_layer_slice(self) -> slice:
-        return slice(self.start_layer, self.end_layer)
+    def calculate_layer_slice(self, layers: int) -> slice:
+        return slice(
+            self.start_layer, self.end_layer if self.end_layer is not None else layers
+        )
 
 
 @dataclass
@@ -37,7 +39,7 @@ class WidthAndHeightSliceArgs:
     end_width: int = arg_field(
         "-ew",
         doc="The end position within the width for the spectrum.",
-        default=-1,
+        default=None,
         defer=True,
     )
 
@@ -51,13 +53,18 @@ class WidthAndHeightSliceArgs:
     end_height: int = arg_field(
         "-eh",
         doc="The end position within the height for the spectrum.",
-        default=-1,
+        default=None,
         defer=True,
     )
 
-    def calculate_width_and_height_slice(self) -> tuple[slice, slice]:
-        return slice(self.start_width, self.end_width), slice(
-            self.start_height, self.end_height
+    def calculate_width_and_height_slice(
+        self, width: int, height: int
+    ) -> tuple[slice, slice]:
+        return slice(
+            self.start_width, self.end_width if self.end_width is not None else width
+        ), slice(
+            self.start_height,
+            self.end_height if self.end_height is not None else height,
         )
 
 
@@ -80,7 +87,7 @@ class MassSliceArgs:
     end_mass: float = arg_field(
         "-em",
         doc="The end position within the spectrum for the image.",
-        default=-1,
+        default=None,
         defer=True,
     )
 
@@ -88,8 +95,14 @@ class MassSliceArgs:
         if self.use_mass:
             return slice(
                 bisect.bisect_left(mass_axis, self.start_mass),
-                bisect.bisect_right(mass_axis, self.end_mass),
+                bisect.bisect_right(mass_axis, self.end_mass)
+                if self.end_mass is not None
+                else len(mass_axis),
                 None,
             )
         else:
-            return slice(int(self.start_mass), int(self.end_mass), None)
+            return slice(
+                int(self.start_mass),
+                int(self.end_mass if self.end_mass is not None else len(mass_axis)),
+                None,
+            )

@@ -9,9 +9,8 @@ import matplotlib.pyplot as plt
 
 @dataclass
 class PlotKwArgs:
-    imshow_kw_args: dict[str, Any] = field(default_factory=dict)
+    plot_kw_args: dict[str, Any] = field(default_factory=dict)
     axes_commands_and_kw_args: dict[str, dict[str, Any]] = field(default_factory=dict)
-    colorbar_kw_args: dict[str, Any] = field(default_factory=dict)
     savefig_kw_args: dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
@@ -23,12 +22,10 @@ class PlotKwArgs:
         kwargs = PlotKwArgs()
         if prefix in file:
             sub_config = file[prefix]
-            if "imshow" in sub_config:
-                kwargs.imshow_kw_args = sub_config["imshow"]
+            if "plot" in sub_config:
+                kwargs.plot_kw_args = sub_config["plot"]
             if "axes" in sub_config:
                 kwargs.axes_commands_and_kw_args = sub_config["axes"]
-            if "colorbar" in sub_config:
-                kwargs.colorbar_kw_args = sub_config["colorbar"]
             if "savefig" in sub_config:
                 kwargs.savefig_kw_args = sub_config["savefig"]
         return kwargs
@@ -36,7 +33,10 @@ class PlotKwArgs:
 
 @dataclass
 class ProcessArgs:
-    total_ion_count: np.ndarray
+    title: str | None
+
+    mass: np.ndarray
+    spectra: np.ndarray
     target_file_name: Path
 
     plot_args: PlotKwArgs
@@ -45,11 +45,13 @@ class ProcessArgs:
 def process(args: ProcessArgs) -> None:
 
     fig, ax = plt.subplots()
-    im = ax.imshow(args.total_ion_count, **args.plot_args.imshow_kw_args)
+    if args.title is not None:
+        fig.suptitle(args.title)
+
+    ax.plot(args.mass, args.spectra, **args.plot_args.plot_kw_args)
 
     for command, kwargs in args.plot_args.axes_commands_and_kw_args.items():
         ax.__getattribute__(command)(**kwargs)
 
-    fig.colorbar(im, ax=ax, **args.plot_args.colorbar_kw_args)
-
     fig.savefig(args.target_file_name, **args.plot_args.savefig_kw_args)
+    plt.close(fig)

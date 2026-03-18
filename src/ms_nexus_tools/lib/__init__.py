@@ -5,3 +5,4 @@ from . import utils as utils
 from . import nxs as nxs
 from . import bounds as bounds
 from .filetypes import DataType
+from . import filter as filter

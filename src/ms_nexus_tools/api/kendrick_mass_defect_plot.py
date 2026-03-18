@@ -1,7 +1,9 @@
 from typing import Any
+from enum import Enum
 from dataclasses import dataclass, field
 import tomllib
 from pathlib import Path
+from . import compound
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,7 +11,7 @@ import matplotlib.pyplot as plt
 
 @dataclass
 class PlotKwArgs:
-    plot_kw_args: dict[str, Any] = field(default_factory=dict)
+    scatter_kw_args: dict[str, Any] = field(default_factory=dict)
     axes_commands_and_kw_args: dict[str, dict[str, Any]] = field(default_factory=dict)
     savefig_kw_args: dict[str, Any] = field(default_factory=dict)
 
@@ -22,8 +24,8 @@ class PlotKwArgs:
         kwargs = PlotKwArgs()
         if prefix in file:
             sub_config = file[prefix]
-            if "plot" in sub_config:
-                kwargs.plot_kw_args = sub_config["plot"]
+            if "scatter" in sub_config:
+                kwargs.scatter_kw_args = sub_config["scatter"]
             if "axes" in sub_config:
                 kwargs.axes_commands_and_kw_args = sub_config["axes"]
             if "savefig" in sub_config:
@@ -31,21 +33,55 @@ class PlotKwArgs:
         return kwargs
 
 
+class Normalisation(Enum):
+    QUADRATIC = "quad"
+    LINEAR = "lin"
+    LOG = "log"
+
+
 @dataclass
 class ProcessArgs:
+    title: str | None
+
     mass: np.ndarray
     spectra: np.ndarray
     target_file_name: Path
 
+    normalisation: Normalisation
+
     plot_args: PlotKwArgs
+
+    normalising_formula: str = "CH2"
 
 
 def process(args: ProcessArgs) -> None:
 
+    comp_properties = compound.process(compound.ProcessArgs(args.normalising_formula))
+
+    km = (
+        args.mass
+        * np.round(comp_properties.lightest_monoisotropic_mass)
+        / comp_properties.lightest_monoisotropic_mass
+    )
+    knm = np.round(km)
+    kmd = km - knm
+
+    match args.normalisation:
+        case Normalisation.LINEAR:
+            sizes = args.spectra / np.max(args.spectra)
+        case Normalisation.LOG:
+            lg = np.log(args.spectra)
+            sizes = lg / np.max(lg)
+        case Normalisation.QUADRATIC:
+            sizes = np.pow(args.spectra / np.max(args.spectra), 2)
+
     fig, ax = plt.subplots()
-    ax.plot(args.mass, args.spectra, **args.plot_args.plot_kw_args)
+    if args.title is not None:
+        fig.suptitle(args.title)
+    ax.scatter(knm, kmd, sizes=sizes, **args.plot_args.scatter_kw_args)
 
     for command, kwargs in args.plot_args.axes_commands_and_kw_args.items():
         ax.__getattribute__(command)(**kwargs)
 
     fig.savefig(args.target_file_name, **args.plot_args.savefig_kw_args)
+    plt.close(fig)

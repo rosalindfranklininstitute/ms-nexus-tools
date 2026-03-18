@@ -3,5 +3,6 @@ from . import ion
 from . import mass_image
 from . import spectrum_image
 from . import image_args
-from . import total_ion_count_plot
-from . import total_spectra_plot
+from . import image_plot
+from . import spectrum_plot
+from . import image_and_spectrum_plot
