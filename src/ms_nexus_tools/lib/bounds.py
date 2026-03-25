@@ -2,10 +2,6 @@ from dataclasses import dataclass, field
 from typing import TypeAlias, overload, Iterable
 from functools import reduce
 
-from typing import reveal_type
-
-from icecream import ic
-
 Shape: TypeAlias = tuple[int, ...]
 
 

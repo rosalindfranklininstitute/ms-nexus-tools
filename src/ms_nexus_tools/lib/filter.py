@@ -57,12 +57,18 @@ class MassRangeTotalImage(Filter):
         self._width = self._stop - self._start
         assert self._width > 0
         self.total_image = np.zeros(shape[0:2])
+        self.total_spectrum = np.zeros((self._width,))
 
     def _process_image(self, bin: int, image: np.ndarray):
         shift_bin = bin - self._start
         if shift_bin < 0 or shift_bin >= self._width:
             return
         self.total_image[:, :] += image[:, :]
+        self.total_spectrum[shift_bin] = np.sum(image)
 
     def _process_spectra(self, w: int, h: int, spectrum: np.ndarray):
-        self.total_image[w, h] = np.sum(spectrum[self._start : self._stop])
+        self.total_image[w, h] = np.sum(spectrum[self.slice()])
+        self.total_spectrum[:] += spectrum[self.slice()]
+
+    def slice(self) -> slice:
+        return slice(self._start, self._stop)

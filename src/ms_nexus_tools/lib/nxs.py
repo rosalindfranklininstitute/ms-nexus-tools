@@ -2,8 +2,9 @@ from typing import Any, Self, NamedTuple
 from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
-import shutil
-import os
+
+from .bounds import Shape
+from .chunking import Chunker
 
 from nexusformat.nexus import NXentry, NXfield, NXdata, nxload
 from nexusformat.nexus.tree import (
@@ -24,10 +25,10 @@ class Axis:
 
     @staticmethod
     def create(values, name: str, indices: list[int], unit: str | None = None):
+        field = NXfield(values, name=name)
         if unit is not None:
-            field = NXfield(values, name=name)
-        else:
-            field = NXfield(values, name=name, unit=unit)
+            field.attrs["unit"] = unit
+
         return Axis(name=name, indices=indices, field=field)
 
     def add_to_group(self, group: NXdata):
@@ -52,7 +53,7 @@ class GenericAxis(list[list[Axis]]):
         return results
 
     def add_to_group(self, group: NXdata):
-        group.attrs["axes"] = self.default_list()
+        group.attrs["axes"] = ",".join(self.default_list())
         for ax in self.list_all():
             ax.add_to_group(group)
 
@@ -133,10 +134,10 @@ class NexusFile:
 
 def create_field(
     dtype: str | None = None,
-    shape: tuple[int, ...] | None = None,
+    shape: Shape | None = None,
     compression: str | None = None,
     compression_opts: Any = None,
-    chunks: tuple[int, ...] | bool | None = None,
+    chunks: Shape | bool | None = None,
     value: Any = None,
     **kwargs,
 ) -> NXfield:
@@ -150,6 +151,37 @@ def create_field(
         chunks=chunks,
         **kwargs,
     )
+
+
+def create_chunked_subentry(
+    nxs: NexusFile,
+    name: str,
+    min_items_per_chunk: int,
+    memory_shape: Shape,
+    data_shape: Shape,
+    priorities: Shape,
+    axes: GenericAxis,
+) -> tuple[Chunker, NXsubentry]:
+    assert len(data_shape) == len(priorities)
+    assert len(data_shape) == len(axes)
+
+    chunks = Chunker.from_item_count(
+        data_shape=memory_shape,
+        priorities=priorities,
+        min_items_per_chunk=min_items_per_chunk,
+    )
+    subentry = nxs.create_subentry(
+        name,
+        create_field(
+            dtype="int32",
+            shape=data_shape,
+            compression="gzip",
+            compression_opts=4,
+            chunks=chunks.chunk_shape,
+        ),
+        axes=axes,
+    )
+    return chunks, subentry
 
 
 def create_group(
