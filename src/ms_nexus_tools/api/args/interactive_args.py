@@ -70,6 +70,7 @@ class FolderOption(Option):
 
     def set_value(self, value):
         self.entry.setText(str(value))
+        self.selected = len(str(value)) > 0
 
     def add_to_grid(
         self, grid: QtWidgets.QGridLayout, row: int, column: int
@@ -431,7 +432,7 @@ class MainWindow(QtWidgets.QWidget):
 
 class InteractiveBase:
     @classmethod
-    def parse_interactive(cls, prog: str, args=None):
+    def parse_interactive(cls, prog: str, exclude: list[str] = [], args=None):
         args = args if args is not None else sys.argv[1:]
         interactive_parser = argparse.ArgumentParser(
             "interactive_parser", add_help=False
@@ -444,13 +445,12 @@ class InteractiveBase:
             raise ValueError("Expected to find and interactive field on the class.")
         interactive_args, remaining_args = interactive_parser.parse_known_args(args)
 
-        actions = [a for a in parse_fields(cls) if a.dest != "interactive"]
+        exclude.append("interactive")
+        actions = [a for a in parse_fields(cls) if a.dest not in exclude]
 
         print(interactive_args)
         if interactive_args.interactive:
-            print(" interactive ")
             parser = argparse.ArgumentParser(prog=prog)
-            final_args = parser.parse_args(remaining_args)
 
             app = QtWidgets.QApplication(sys.argv)
             window = MainWindow(prog)
@@ -461,15 +461,17 @@ class InteractiveBase:
                 not_required_a.required = False
                 add_argument(parser, not_required_a)
 
+            final_args = parser.parse_args(remaining_args)
+
             for k, v in vars(final_args).items():
                 window.set_value(k, v)
 
             window.add_confirm_buttons()
 
             final_args = window.launch(app)
-            final_args["interactive"] = True
             if final_args is None:
                 raise RuntimeError("Failed to process interactively.")
+            final_args["interactive"] = True
 
         else:
             parser = argparse.ArgumentParser(prog=prog)
