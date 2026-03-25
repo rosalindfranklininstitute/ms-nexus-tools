@@ -481,8 +481,6 @@ def process(args: ProcessArgs):
         spectra_chunks, image_chunks, memory_info = calculate_chunks_from_memory(
             args.chunk_count, args.max_memory, args.processors, bounds.to_bounds()
         )
-        ic(len(spectra_chunks))
-        ic(spectra_chunks[0].shape())
 
         entry["spectra"] = NXsubentry(
             NXdata(

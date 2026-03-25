@@ -115,7 +115,6 @@ def test_count_matched_priorities():
     chunker = Chunker.from_min_chunks(
         data_shape=(100, 100, 100), priorities=(1, 1, 2), min_chunk_count=200
     )
-    ic(chunker)
 
     assert chunker.chunk_shape == (7, 7, 100)
     assert chunker.chunk_count == (15, 15, 1)

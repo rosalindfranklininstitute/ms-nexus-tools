@@ -294,10 +294,6 @@ def add_argument(parser: argparse.ArgumentParser, fld: Field | Action):
 
 
 def add_arguments(parser: argparse.ArgumentParser, dcls: type | list[Action]):
-    print()
-    print("---")
-    ic()
-    print("---")
     if isinstance(dcls, type):
         actions = parse_fields(dcls)
     else:
@@ -310,4 +306,3 @@ def add_arguments(parser: argparse.ArgumentParser, dcls: type | list[Action]):
             add_argument(parser, a)
     for a in defered:
         add_argument(parser, a)
-    print("<<<")

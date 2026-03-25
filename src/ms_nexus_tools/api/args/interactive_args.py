@@ -69,8 +69,9 @@ class FolderOption(Option):
         return Path(self.entry.text()) if self.selected else None
 
     def set_value(self, value):
-        self.entry.setText(str(value))
-        self.selected = len(str(value)) > 0
+        if value is not None:
+            self.entry.setText(str(value))
+            self.selected = len(str(value)) > 0
 
     def add_to_grid(
         self, grid: QtWidgets.QGridLayout, row: int, column: int
@@ -113,8 +114,9 @@ class ChoicesOption(Option):
         return self.choices[self.combo_box.currentIndex()]
 
     def set_value(self, value):
-        inx = self.choices.index(value)
-        self.combo_box.setCurrentIndex(inx)
+        if value is not None:
+            inx = self.choices.index(value)
+            self.combo_box.setCurrentIndex(inx)
 
     def add_to_grid(
         self, grid: QtWidgets.QGridLayout, row: int, column: int
@@ -439,7 +441,9 @@ class InteractiveBase:
         )
         for f in fields(cls):
             if f.name == "interactive":
-                add_argument(interactive_parser, parse_field(f))
+                action = parse_field(f)
+                assert action is not None
+                add_argument(interactive_parser, action)
                 break
         else:
             raise ValueError("Expected to find and interactive field on the class.")
@@ -448,7 +452,6 @@ class InteractiveBase:
         exclude.append("interactive")
         actions = [a for a in parse_fields(cls) if a.dest not in exclude]
 
-        print(interactive_args)
         if interactive_args.interactive:
             parser = argparse.ArgumentParser(prog=prog)
 
@@ -470,7 +473,8 @@ class InteractiveBase:
 
             final_args = window.launch(app)
             if final_args is None:
-                raise RuntimeError("Failed to process interactively.")
+                print("Canceled")
+                exit()
             final_args["interactive"] = True
 
         else:
