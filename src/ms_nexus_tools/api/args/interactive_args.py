@@ -104,7 +104,7 @@ class ChoicesOption(Option):
         self.label = QtWidgets.QLabel(f"{self.name}:")
 
         self.combo_box = QtWidgets.QComboBox()
-        self.combo_box.addItems(choices)
+        self.combo_box.addItems([str(c) for c in choices])
         self.combo_box.setCurrentIndex(0)
 
     def get_parts(self) -> tuple[QtWidgets.QWidget, ...]:
@@ -186,7 +186,11 @@ class InputOption(Option):
             elif self.value_type is int:
                 return int(self.entry.text().strip())
             else:
-                return self.entry.text().strip()
+                val = self.entry.text().strip()
+                if len(val) == 0:
+                    return None
+                else:
+                    return val
 
         except ValueError:
             if self.required:
@@ -195,7 +199,8 @@ class InputOption(Option):
                 return None
 
     def set_value(self, value):
-        self.entry.setText(value)
+        if value is not None:
+            self.entry.setText(str(value))
 
     def add_to_grid(
         self, grid: QtWidgets.QGridLayout, row: int, column: int
@@ -211,7 +216,7 @@ class ItemWidget(QtWidgets.QWidget):
         self.values = values
         layout = QtWidgets.QHBoxLayout()
         layout.setContentsMargins(4, 2, 4, 2)
-        self.labels = [QtWidgets.QLabel(text) for text in self.values]
+        self.labels = [QtWidgets.QLabel(str(text)) for text in self.values]
         for label in self.labels:
             label.setSizePolicy(
                 QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred
@@ -233,6 +238,7 @@ class ItemsOption(Option):
         self.types = types
         self.expected_height = expected_height
         self.input_layout = QtWidgets.QHBoxLayout()
+        self.label = QtWidgets.QLabel(f"{self.name}:")
         self.entries = [QtWidgets.QLineEdit() for v in self.types]
         for entry, t in zip(self.entries, self.types):
             entry.setPlaceholderText("Type an item and press + or Enter")
@@ -261,7 +267,8 @@ class ItemsOption(Option):
         for entry, value in zip(self.entries, values):
             if validator := entry.validator():
                 valid &= (
-                    validator.validate(value, 0)[0] == QtGui.QValidator.State.Acceptable
+                    validator.validate(str(value), 0)[0]
+                    == QtGui.QValidator.State.Acceptable
                 )
         if not valid:
             if raise_on_invalid:
@@ -302,11 +309,12 @@ class ItemsOption(Option):
     def add_to_grid(
         self, grid: QtWidgets.QGridLayout, row: int, column: int
     ) -> tuple[int, int]:
-        grid.addLayout(self.input_layout, row, column, 1, len(self.types))
+        grid.addWidget(self.label, row, column)
+        grid.addLayout(self.input_layout, row, column + 1, 1, len(self.types))
         grid.addWidget(
-            self.list_widget, row + 1, column, self.expected_height, len(self.types)
+            self.list_widget, row + 1, column + 1, self.expected_height, len(self.types)
         )
-        return (self.expected_height + 1, len(self.types))
+        return (self.expected_height + 1, len(self.types) + 1)
 
 
 class MainWindow(QtWidgets.QWidget):
@@ -449,16 +457,18 @@ class InteractiveBase:
             raise ValueError("Expected to find and interactive field on the class.")
         interactive_args, remaining_args = interactive_parser.parse_known_args(args)
 
-        exclude.append("interactive")
-        actions = [a for a in parse_fields(cls) if a.dest not in exclude]
+        actions = parse_fields(cls)
 
         if interactive_args.interactive:
-            parser = argparse.ArgumentParser(prog=prog)
-
             app = QtWidgets.QApplication(sys.argv)
             window = MainWindow(prog)
 
+            parser = argparse.ArgumentParser(prog=prog)
+            exclude.append("interactive")
+
             for a in actions:
+                if a.dest in exclude:
+                    continue
                 window.add_argument(a)
                 not_required_a = copy.copy(a)
                 not_required_a.required = False

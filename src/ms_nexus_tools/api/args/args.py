@@ -1,7 +1,7 @@
 import copy
-from typing import Any, get_args, NamedTuple, Optional, Literal
+from typing import Any, get_args, NamedTuple, Optional, Literal, Self
 import argparse
-from dataclasses import field, Field, MISSING, fields
+from dataclasses import field, Field, MISSING, fields, dataclass, is_dataclass
 from enum import Enum
 import sys
 
@@ -90,21 +90,22 @@ def arg_field(*args, arg_type: ArgType = ArgType.AUTOMATIC, defer=False, **kw_ar
 
 
 class Action:
-    aliases: list[str]
+    def __init__(self):
+        self.aliases: list[str] = []
 
-    arg_type: ArgType
-    defer: bool
+        self.arg_type: ArgType = ArgType.AUTOMATIC
+        self.defer: bool = False
 
-    action: PossibleActions
-    value_type: Any | MISSING_TYPE
-    help: str | MISSING_TYPE
-    default: Any | MISSING_TYPE
-    nargs: None | str | int
-    choices: list[Any] | None
-    required: bool
-    dest: str
-    metavar: str | tuple[str] | None
-    extra_kw_args: dict[str, Any]
+        self.action: PossibleActions = "store"
+        self.value_type: Any | MISSING_TYPE = MISSING
+        self.help: str | MISSING_TYPE = MISSING
+        self.default: Any | MISSING_TYPE = MISSING
+        self.nargs: None | str | int = None
+        self.choices: list[Any] | None = None
+        self.required: bool = False
+        self.dest: str = ""
+        self.metavar: str | tuple[str] | None = None
+        self.extra_kw_args: dict[str, Any] = dict()
 
     def __getitem__(self, index):
         match index:
@@ -185,7 +186,7 @@ class Action:
         return self.aliases[-1].strip("-").replace("-", " ")
 
 
-def parse_field(fld: Field) -> Optional["Action"]:
+def parse_field(fld: Field) -> Optional[Action]:
     try:
         if "arg_type" not in fld.metadata:
             return None
