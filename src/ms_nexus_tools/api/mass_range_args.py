@@ -8,7 +8,7 @@ import numpy as np
 from ..lib.bounds import Shape
 from ..lib.filter import MassRangeTotalImage
 
-from .args import arg_field
+from datargs import arg_field
 
 from .image_and_spectrum_plot import (
     PlotKwArgs as ISPKwArgs,

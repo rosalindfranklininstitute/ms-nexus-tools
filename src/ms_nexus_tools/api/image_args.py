@@ -2,7 +2,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 import bisect
 
-from .args import arg_field
+from datargs import arg_field
 
 
 @dataclass

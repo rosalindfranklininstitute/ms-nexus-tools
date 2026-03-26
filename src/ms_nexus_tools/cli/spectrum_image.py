@@ -1,12 +1,13 @@
 import argparse
 
-from ..api import spectrum_image, args as nxargs
+import datargs
+from ..api import spectrum_image
 
 
 def specimage():
     parser = argparse.ArgumentParser(prog="spectrum_image")
 
-    nxargs.add_arguments(parser, spectrum_image.ProcessArgs)
+    datargs.add_arguments(parser, spectrum_image.ProcessArgs)
 
     args = parser.parse_args()
 

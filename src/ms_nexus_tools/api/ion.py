@@ -30,7 +30,7 @@ from ..lib.chunking import (
     ChunkBounds,
     calculate_chunks_from_memory,
 )
-from .args import arg_field, ArgType
+from datargs import arg_field, ArgType
 
 timer_interval = 30
 

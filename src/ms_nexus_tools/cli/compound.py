@@ -1,12 +1,13 @@
 import argparse
 
-from ..api import args as nxargs, compound as comp_api
+import datargs
+from ..api import compound as comp_api
 
 
 def compound():
     parser = argparse.ArgumentParser(prog="compound")
 
-    nxargs.add_arguments(parser, comp_api.ProcessArgs)
+    datargs.add_arguments(parser, comp_api.ProcessArgs)
 
     args = parser.parse_args()
 

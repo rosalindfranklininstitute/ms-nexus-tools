@@ -9,6 +9,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12,<3.14"
 dependencies = [
+    "datargs",
     "h5py>=3.15.1",
     "hypothesis>=6.151.7",
     "icecream>=2.1.10",
@@ -52,6 +53,9 @@ extend-exclude=["elements.py", "SIS_20260218_Elements_and_Isotopes.csv"]
 
 [tool.ty.analysis]
 allowed-unresolved-imports = ["nexusformat.nexus.tree.NXparameters" ,"nexusformat.nexus.tree.NXinstrument"]
+
+[tool.uv.sources]
+datargs = { path = "../datargs", editable = true }
 
 [dependency-groups]
 dev = [

@@ -6,7 +6,7 @@ from bisect import bisect_left, bisect_right
 
 import numpy as np
 
-from .args import arg_field
+from datargs import arg_field
 from . import compound as nxcomp
 
 from ..lib.bounds import Shape

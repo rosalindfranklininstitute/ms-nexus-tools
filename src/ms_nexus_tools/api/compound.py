@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 
-from .args import arg_field, ArgType
+from datargs import arg_field, ArgType
 from ..lib import elements
 
 from icecream import ic
