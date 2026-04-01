@@ -6,7 +6,8 @@ from typing import NamedTuple
 import numpy as np
 
 from ..lib.bounds import Shape
-from ..lib.filter import MassRangeTotalImage
+from ..lib.filter import MassRangeTotalImage, Accumulator
+from ..lib.normalisation import norm, Norm
 
 from datargs import arg_field
 
@@ -76,23 +77,25 @@ class MassRangeArgs:
         mass_values: np.ndarray,
         mass_data: list[MassRange],
         mass_images: list[MassRangeTotalImage],
-        nxs_out_path: Path,
+        accumulator: Accumulator,
+        normalisation: Norm,
+        target_dir: Path,
+        name: str,
         isp_config: ISPKwArgs,
     ):
         assert len(mass_data) == len(mass_images)
 
-        target_dir = Path(*nxs_out_path.parts[:-1])
-
         for md, mi in zip(mass_data, mass_images):
-            filename = f"{nxs_out_path.stem}.{md.start_mass}-{md.stop_mass}.png"
-            title = f"{nxs_out_path.stem}: {md.start_mass}-{md.stop_mass}"
+            filename = f"{name}.{accumulator.value}_{normalisation.value}.{md.start_mass}-{md.stop_mass}.png"
+            title = f"{name}: ({accumulator.value}/{normalisation.value}): {md.start_mass}-{md.stop_mass}"
 
+            scaling = norm(mi.spectrum(accumulator), normalisation)
             isp_process(
                 ISPProcessArgs(
                     title,
                     mass_values[mi.slice()],
-                    mi.total_spectrum,
-                    mi.total_image,
+                    mi.spectrum(accumulator) / scaling,
+                    mi.image(accumulator) / scaling,
                     target_dir / filename,
                     plot_args=isp_config,
                 )

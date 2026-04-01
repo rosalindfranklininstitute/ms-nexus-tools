@@ -1,8 +1,35 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 import bisect
+from enum import Enum
+
+import numpy as np
 
 from datargs import arg_field
+
+
+def _cycle(cycle: int | None, length: int) -> int:
+    if cycle is None:
+        return length
+    elif cycle < 0:
+        result = length + cycle
+        if result < 0:
+            raise IndexError(
+                f"Index of {cycle} was greater than the dimension width of {length}"
+            )
+        return result
+    elif cycle > length:
+        raise IndexError(
+            f"Index of {cycle} was greater than the dimension width of {length}"
+        )
+    else:
+        return cycle
+
+
+def _slice(start: int, end: int | None, length):
+    start = _cycle(start, length)
+    end = _cycle(end, length)
+    return slice(start, end)
 
 
 @dataclass
@@ -22,9 +49,7 @@ class LayerSliceArgs:
     )
 
     def calculate_layer_slice(self, layers: int) -> slice:
-        return slice(
-            self.start_layer, self.end_layer if self.end_layer is not None else layers
-        )
+        return _slice(self.start_layer, self.end_layer, layers)
 
 
 @dataclass
@@ -60,23 +85,28 @@ class WidthAndHeightSliceArgs:
     def calculate_width_and_height_slice(
         self, width: int, height: int
     ) -> tuple[slice, slice]:
-        return slice(
-            self.start_width, self.end_width if self.end_width is not None else width
-        ), slice(
-            self.start_height,
-            self.end_height if self.end_height is not None else height,
+
+        return _slice(self.start_width, self.end_width, width), _slice(
+            self.start_height, self.end_height, height
         )
+
+
+class MassMeasure(Enum):
+    MASS = ("mass",)
+    INDEX = "index"
 
 
 @dataclass
 class MassSliceArgs:
-    use_mass: bool = arg_field(
+    use_mass: MassMeasure = arg_field(
         "-mv",
         "--mass-value",
-        action="store_true",
         doc="If present treat the start and end mass values as masses instead of indices.",
         defer=True,
+        choices=[t for t in MassMeasure],
+        default=MassMeasure.MASS,
     )
+
     start_mass: float = arg_field(
         "-sm",
         doc="The start position within the spectrum for the image.",
@@ -91,18 +121,20 @@ class MassSliceArgs:
         defer=True,
     )
 
-    def calculate_mass_slice(self, mass_axis: Sequence[int | float]) -> slice:
+    def calculate_mass_slice(
+        self, mass_axis: Sequence[int | float] | np.ndarray
+    ) -> slice:
         if self.use_mass:
-            return slice(
+            return _slice(
                 bisect.bisect_left(mass_axis, self.start_mass),
                 bisect.bisect_right(mass_axis, self.end_mass)
                 if self.end_mass is not None
-                else len(mass_axis),
-                None,
+                else None,
+                len(mass_axis),
             )
         else:
-            return slice(
+            return _slice(
                 int(self.start_mass),
-                int(self.end_mass if self.end_mass is not None else len(mass_axis)),
-                None,
+                int(self.end_mass if self.end_mass is not None else None),
+                len(mass_axis),
             )

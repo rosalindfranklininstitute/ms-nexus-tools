@@ -10,7 +10,8 @@ from datargs import arg_field
 from . import compound as nxcomp
 
 from ..lib.bounds import Shape
-from ..lib.filter import MassRangeTotalImage
+from ..lib.filter import MassRangeTotalImage, Accumulator
+from ..lib.normalisation import norm, Norm
 
 from .image_and_spectrum_plot import (
     PlotKwArgs as ISPKwArgs,
@@ -86,30 +87,33 @@ class FormulaArgs:
         mass_values: np.ndarray,
         formulae_data: list[FormulaAndRange],
         formulae_images: list[MassRangeTotalImage],
-        nxs_out_path: Path,
+        accumulator: Accumulator,
+        normalisation: Norm,
+        target_dir: Path,
+        name: str,
         isp_config: ISPKwArgs,
     ):
 
-        isp_config = copy.copy(isp_config)
+        isp_config = copy.deepcopy(isp_config)
 
         assert len(formulae_data) == len(formulae_images)
 
-        target_dir = Path(*nxs_out_path.parts[:-1])
-
         for fd, fi in zip(formulae_data, formulae_images):
-            filename = f"{nxs_out_path.stem}.{fd.formula}.png"
-            title = f"{nxs_out_path.stem}: {fd.formula}"
+            filename = (
+                f"{name}.{accumulator.value}_{normalisation.value}.{fd.formula}.png"
+            )
+            title = f"{name}: ({accumulator.value}/{normalisation.value}): {fd.formula}"
 
             isp_config.plot_axes_commands_and_kw_args.update(
                 dict(axvline=dict(x=fd.mass, linewidth=0.5, linestyle=":"))
             )
-
+            scaling = norm(fi.spectrum(accumulator), normalisation)
             isp_process(
                 ISPProcessArgs(
                     title,
                     mass_values[fi.slice()],
-                    fi.total_spectrum,
-                    fi.total_image,
+                    fi.spectrum(accumulator) / scaling,
+                    fi.image(accumulator) / scaling,
                     target_dir / filename,
                     plot_args=isp_config,
                 )

@@ -24,13 +24,13 @@ license = "Apache-2.0"
 license-files = ["LICENSES/*"]
 
 [project.scripts]
-ion2rfi = "ms_nexus_tools:ion2rfi"
 profile = "ms_nexus_tools:profile"
 compound = "ms_nexus_tools:compound"
 massimage = "ms_nexus_tools:massimage"
 specimage = "ms_nexus_tools:specimage"
 inspect = "ms_nexus_tools:inspect"
 test = "ms_nexus_tools:test"
+query = "ms_nexus_tools:query"
 
 [build-system]
 requires = ["uv_build>=0.10.0,<0.11.0"]

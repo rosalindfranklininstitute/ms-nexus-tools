@@ -43,7 +43,6 @@ class ProcessArgs:
 
 
 def process(args: ProcessArgs) -> None:
-
     fig, ax = plt.subplots()
     if args.title is not None:
         fig.suptitle(args.title)

@@ -17,6 +17,10 @@ def approximate_int4_count(gb: float) -> float:
     return (gb / 4.0) * 1024 * 1024 * 1024
 
 
+def count_chunks_to_cover(data_shape: Shape, chunk_shape: Shape) -> list[int]:
+    return [math.ceil(data_shape[i] / c) for i, c in enumerate(chunk_shape)]
+
+
 def _count_priorities(
     priorities: Shape | list[int],
 ) -> Generator[tuple[list[int], int]]:
