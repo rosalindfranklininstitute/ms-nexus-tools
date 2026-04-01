@@ -92,7 +92,7 @@ class WidthAndHeightSliceArgs:
 
 
 class MassMeasure(Enum):
-    MASS = ("mass",)
+    MASS = "mass"
     INDEX = "index"
 
 

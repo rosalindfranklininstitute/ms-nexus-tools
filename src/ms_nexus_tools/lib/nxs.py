@@ -3,8 +3,9 @@ from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
 
-from .bounds import Shape
+from .bounds import Shape, ContainedBounds, Chunk
 from .chunking import Chunker
+from .filter import Accumulator
 
 from nexusformat.nexus import NXentry, NXfield, NXdata, nxload
 from nexusformat.nexus.tree import (
@@ -40,6 +41,11 @@ class Axis:
 
     def __getitem__(self, index):
         return self.field[index]
+
+    def copy_with_incremented_indices(self, inc: int) -> "Axis":
+        return Axis(
+            name=self.name, indices=[i + inc for i in self.indices], field=self.field
+        )
 
 
 class GenericAxis(list[list[Axis]]):
@@ -256,3 +262,120 @@ def write_from_data(
     nxs.root.data.signal[:] = data[:]
 
     return nxs
+
+
+def create_standard_file(
+    data_shape: Shape,
+    out_chunk: Chunk,
+    out_path: Path,
+    axes: GenericAxis | None = None,
+    min_items_per_chunk: int = 46000,
+):
+    cbounds = ContainedBounds.from_chunk(outer_shape=data_shape, inner_chunk=out_chunk)
+
+    if axes is None:
+        axes = GenericAxis(
+            [
+                [
+                    Axis.create(
+                        name="layer",
+                        values=out_chunk.arange(0),
+                        indices=[0],
+                    )
+                ],
+                [
+                    Axis.create(
+                        name="x",
+                        values=out_chunk.arange(1),
+                        indices=[1],
+                    )
+                ],
+                [
+                    Axis.create(
+                        name="y",
+                        values=out_chunk.arange(2),
+                        indices=[2],
+                    )
+                ],
+                [
+                    Axis.create(
+                        name="mass",
+                        values=out_chunk.arange(3),
+                        indices=[3],
+                    )
+                ],
+            ]
+        )
+    acc_count = len(Accumulator)
+    total_axes = [
+        [
+            Axis.create(
+                name="accumulator",
+                values=[t.value for t in Accumulator],
+                indices=[0],
+            )
+        ]
+    ]
+    for axis_set in axes:
+        inner_list = []
+        for ax in axis_set:
+            inner_list.append(ax.copy_with_incremented_indices(1))
+        total_axes.append(inner_list)
+
+    nxs = NexusFile(out_path, mode="w")
+    with nxs.as_context():
+        spectra_chunks, spectra = create_chunked_subentry(
+            nxs,
+            "spectra",
+            min_items_per_chunk=min_items_per_chunk,
+            memory_shape=cbounds.outer_shape,
+            data_shape=cbounds.inner_shape,
+            priorities=(3, 2, 2, 1),
+            axes=axes,
+        )
+
+        total_spectra_chunks, total_spectra = create_chunked_subentry(
+            nxs,
+            "total_spectra",
+            min_items_per_chunk=min_items_per_chunk,
+            memory_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
+            data_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
+            priorities=(3, 2, 1),
+            axes=GenericAxis([total_axes[0], total_axes[1], total_axes[4]]),
+        )
+
+        image_chunks, images = create_chunked_subentry(
+            nxs,
+            "images",
+            min_items_per_chunk=min_items_per_chunk,
+            memory_shape=cbounds.outer_shape,
+            data_shape=cbounds.inner_shape,
+            priorities=(3, 1, 1, 2),
+            axes=axes,
+        )
+
+        total_image_chunks, total_images = create_chunked_subentry(
+            nxs,
+            "total_images",
+            min_items_per_chunk=min_items_per_chunk,
+            memory_shape=(
+                acc_count,
+                cbounds.inner_shape[0],
+                cbounds.inner_shape[1],
+                cbounds.inner_shape[2],
+            ),
+            data_shape=(
+                acc_count,
+                cbounds.inner_shape[0],
+                cbounds.inner_shape[1],
+                cbounds.inner_shape[2],
+            ),
+            priorities=(3, 2, 1, 1),
+            axes=GenericAxis(
+                [total_axes[0], total_axes[1], total_axes[2], total_axes[3]]
+            ),
+        )
+    return (
+        cbounds,
+        (spectra_chunks, total_spectra_chunks, image_chunks, total_image_chunks),
+    )

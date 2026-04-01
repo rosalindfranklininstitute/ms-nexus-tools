@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import TypeAlias, overload, Iterable
 from functools import reduce
+import numpy as np
 
 Shape: TypeAlias = tuple[int, ...]
 
@@ -24,6 +25,9 @@ class Chunk(list[slice]):
 
     def range(self, index: int) -> range:
         return range(self[index].start, self[index].stop)
+
+    def arange(self, index: int, step: int | float = 1) -> np.ndarray:
+        return np.arange(self[1].start, self[1].stop, step)
 
     @property
     def shape(self) -> Shape:
