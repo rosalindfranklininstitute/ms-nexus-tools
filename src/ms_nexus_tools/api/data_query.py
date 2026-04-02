@@ -84,9 +84,9 @@ class ProcessArgs(
         default=Accumulator.TIC,
     )
 
-    sum_all_layers: bool = arg_field(
+    accumulate_masses: bool = arg_field(
         action="store_true",
-        doc="If present then the spectra and images will be summed across all the layers inthe file. If absent (the default) the images and spectra will be written out for each layer.",
+        doc="If present then the mass images from the --mass-range will be accumulated into one image.",
     )
 
     plot_total_spectrum: bool = arg_field(
@@ -109,6 +109,11 @@ class ProcessArgs(
         default=OriginLocatoin.UPPER_LEFT,
     )
 
+    write_txt: bool = arg_field(
+        action="store_true",
+        doc="If present will write out all images and spectra to .txt files using numpy.savetxt.",
+    )
+
 
 def process(args: ProcessArgs, config: dict[str, Any] = {}):
 
@@ -116,7 +121,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
 
     nx_file = NexusFile(args.in_path, mode="r")
 
-    if args.plot_total_image:
+    if args.plot_total_image or args.accumulate_masses:
         tic_config = nxtic.PlotKwArgs.read_config(config, "total_ion_count")
     if args.plot_total_spectrum:
         ts_config = nxts.PlotKwArgs.read_config(config, "total_spectra")
@@ -197,8 +202,21 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                 args.scaling,
                 args.out_dir,
                 f"{title}.layer_{ll + 1:0{layer_digits}}",
+                args.write_txt,
                 isp_config,
             )
+
+            if args.accumulate_masses:
+                args.accumulate_mass_ranges(
+                    mass_range_data,
+                    mass_images,
+                    args.accumulator,
+                    args.scaling,
+                    args.out_dir,
+                    f"{title}.layer_{ll + 1:0{layer_digits}}",
+                    args.write_txt,
+                    tic_config,
+                )
 
             args.plot_mass_ranges(
                 mass_values,
@@ -208,6 +226,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                 args.scaling,
                 args.out_dir,
                 f"{title}.layer_{ll + 1:0{layer_digits}}",
+                args.write_txt,
                 isp_config,
             )
 
@@ -235,37 +254,50 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                         ].nxdata
                 return normalise(image, args.scaling)
 
+            filename = f"{title}.layer_{ll + 1:0{layer_digits}}.{args.accumulator.value}_{args.scaling.value}"
+            if args.write_txt:
+                np.savetxt(
+                    args.out_dir / f"{filename}.image.txt",
+                    total_images(),
+                )
+
+                total_spectra_data = np.array([mass_values, total_spectra()]).T
+
+                np.savetxt(
+                    args.out_dir / f"{filename}.spectrum.txt", total_spectra_data
+                )
+
+            title = (
+                f"{args.in_path.stem}: ({args.accumulator.value}/{args.scaling.value})"
+            )
             if args.plot_total_image:
-                filename = f"{title}.layer_{ll + 1:0{layer_digits}}.image.png"
                 nxtic.process(
                     nxtic.ProcessArgs(
                         title,
                         total_images(),
-                        Path(args.out_dir, filename),
+                        args.out_dir / f"{filename}.image.png",
                         plot_args=tic_config,
                     )
                 )
 
             if args.plot_total_spectrum:
-                filename = f"{title}.layer_{ll + 1:0{layer_digits}}.spectrum.png"
                 nxts.process(
                     nxts.ProcessArgs(
                         title,
                         mass_values,
                         total_spectra(),
-                        Path(args.out_dir, filename),
+                        args.out_dir / f"{filename}.spectrum.png",
                         plot_args=ts_config,
                     )
                 )
 
             if args.plot_kdm:
-                filename = f"{title}.layer_{ll + 1:0{layer_digits}}.kdm.png"
                 nxkdm.process(
                     nxkdm.ProcessArgs(
                         title,
                         mass_values,
                         total_spectra(),
-                        Path(args.out_dir, filename),
+                        args.out_dir / f"{filename}.kdm.png",
                         normalisation=nxkdm.Normalisation.QUADRATIC,
                         plot_args=kdm_config,
                     )

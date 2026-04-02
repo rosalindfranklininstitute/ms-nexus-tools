@@ -8,6 +8,11 @@ class Norm(Enum):
     TIC = "tic"
 
 
+class Accumulator(Enum):
+    TIC = "tic"
+    MAX = "max"
+
+
 EMPTY = np.full((1,), np.nan)
 
 
@@ -53,7 +58,7 @@ def _operate(operation, current, new, axis):
         return operation([current, inc_value], axis=0)
 
 
-class IncrementalNorm:
+class IncrementalAccumulator:
     def __init__(self, axis=None):
         self.max: np.ndarray = EMPTY
         self.tic: np.ndarray = EMPTY
@@ -65,9 +70,9 @@ class IncrementalNorm:
         self.max = _operate(np.nanmax, self.max, data, axis_to_use)
         self.tic = _operate(np.nansum, self.tic, data, axis_to_use)
 
-    def __getitem__(self, index: str | Norm):
+    def __getitem__(self, index: str | Accumulator):
         match index:
-            case Norm.MAX | Norm.MAX.value:
+            case Accumulator.MAX | Accumulator.MAX.value:
                 return self.max
-            case Norm.TIC | Norm.TIC.value:
+            case Accumulator.TIC | Accumulator.TIC.value:
                 return self.tic

@@ -91,6 +91,7 @@ class FormulaArgs:
         normalisation: Norm,
         target_dir: Path,
         name: str,
+        write_txt: bool,
         isp_config: ISPKwArgs,
     ):
 
@@ -99,9 +100,7 @@ class FormulaArgs:
         assert len(formulae_data) == len(formulae_images)
 
         for fd, fi in zip(formulae_data, formulae_images):
-            filename = (
-                f"{name}.{accumulator.value}_{normalisation.value}.{fd.formula}.png"
-            )
+            filename = f"{name}.{accumulator.value}_{normalisation.value}.{fd.formula}"
             title = f"{name}: ({accumulator.value}/{normalisation.value}): {fd.formula}"
 
             isp_config.plot_axes_commands_and_kw_args.update(
@@ -114,7 +113,19 @@ class FormulaArgs:
                     mass_values[fi.slice()],
                     fi.spectrum(accumulator) / scaling,
                     fi.image(accumulator) / scaling,
-                    target_dir / filename,
+                    target_dir / f"{filename}.png",
                     plot_args=isp_config,
                 )
             )
+
+            if write_txt:
+                np.savetxt(
+                    target_dir / f"{filename}.image.txt",
+                    fi.image(accumulator) / scaling,
+                )
+
+                total_spectra_data = np.array(
+                    [mass_values[fi.slice()], fi.spectrum(accumulator) / scaling]
+                ).T
+
+                np.savetxt(target_dir / f"{filename}.spectrum.txt", total_spectra_data)

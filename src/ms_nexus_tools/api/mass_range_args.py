@@ -7,7 +7,7 @@ import numpy as np
 
 from ..lib.bounds import Shape
 from ..lib.filter import MassRangeTotalImage, Accumulator
-from ..lib.normalisation import norm, Norm
+from ..lib.normalisation import norm, Norm, IncrementalAccumulator
 
 from datargs import arg_field
 
@@ -15,6 +15,12 @@ from .image_and_spectrum_plot import (
     PlotKwArgs as ISPKwArgs,
     ProcessArgs as ISPProcessArgs,
     process as isp_process,
+)
+
+from .image_plot import (
+    PlotKwArgs as IPKwArgs,
+    ProcessArgs as IPProcessArgs,
+    process as ip_process,
 )
 
 
@@ -81,12 +87,13 @@ class MassRangeArgs:
         normalisation: Norm,
         target_dir: Path,
         name: str,
+        write_txt: bool,
         isp_config: ISPKwArgs,
     ):
         assert len(mass_data) == len(mass_images)
 
         for md, mi in zip(mass_data, mass_images):
-            filename = f"{name}.{accumulator.value}_{normalisation.value}.{md.start_mass}-{md.stop_mass}.png"
+            filename = f"{name}.{accumulator.value}_{normalisation.value}.{md.start_mass}-{md.stop_mass}"
             title = f"{name}: ({accumulator.value}/{normalisation.value}): {md.start_mass}-{md.stop_mass}"
 
             scaling = norm(mi.spectrum(accumulator), normalisation)
@@ -96,7 +103,57 @@ class MassRangeArgs:
                     mass_values[mi.slice()],
                     mi.spectrum(accumulator) / scaling,
                     mi.image(accumulator) / scaling,
-                    target_dir / filename,
+                    target_dir / f"{filename}.png",
                     plot_args=isp_config,
                 )
             )
+
+            if write_txt:
+                np.savetxt(
+                    target_dir / f"{filename}.image.txt",
+                    mi.image(accumulator) / scaling,
+                )
+
+                total_spectra_data = np.array(
+                    [mass_values[mi.slice()], mi.spectrum(accumulator) / scaling]
+                ).T
+
+                np.savetxt(target_dir / f"{filename}.spectrum.txt", total_spectra_data)
+
+    def accumulate_mass_ranges(
+        self,
+        mass_data: list[MassRange],
+        mass_images: list[MassRangeTotalImage],
+        accumulator: Accumulator,
+        normalisation: Norm,
+        target_dir: Path,
+        name: str,
+        write_txt: bool,
+        ip_config: IPKwArgs,
+    ):
+
+        assert len(mass_data) == len(mass_images)
+
+        filename = f"{name}.{accumulator.value}_{normalisation.value}.acc"
+        title = (
+            f"{name}: ({accumulator.value}/{normalisation.value}): Accumumlated ranges"
+        )
+
+        image_acc = IncrementalAccumulator(axis=2)
+
+        for md, mi in zip(mass_data, mass_images):
+            image_acc.add(mi.image(accumulator))
+
+        scaling = norm(image_acc[accumulator], normalisation)
+
+        ip_process(
+            IPProcessArgs(
+                title,
+                image_acc[accumulator] / scaling,
+                target_dir / f"{filename}.png",
+                plot_args=ip_config,
+            )
+        )
+
+        if write_txt:
+            np.savetxt(target_dir / f"{filename}.txt", image_acc[accumulator] / scaling)

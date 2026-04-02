@@ -15,32 +15,26 @@ def test_norms_shape():
     ones = np.ones((2, 3, 4))
 
     norms = dict(
-        x=nxlib.IncrementalNorm(axis=0),
-        y=nxlib.IncrementalNorm(axis=1),
-        z=nxlib.IncrementalNorm(axis=2),
-        xy=nxlib.IncrementalNorm(axis=(0, 1)),
-        yz=nxlib.IncrementalNorm(axis=(1, 2)),
-        xyz=nxlib.IncrementalNorm(axis=(0, 1, 2)),
+        x=nxlib.IncrementalAccumulator(axis=0),
+        y=nxlib.IncrementalAccumulator(axis=1),
+        z=nxlib.IncrementalAccumulator(axis=2),
+        xy=nxlib.IncrementalAccumulator(axis=(0, 1)),
+        yz=nxlib.IncrementalAccumulator(axis=(1, 2)),
+        xyz=nxlib.IncrementalAccumulator(axis=(0, 1, 2)),
     )
 
     for n in norms.values():
         n.add(ones)
         n.add(ones * 2)
 
-    assert norms["x"].min.shape == (3, 4)
-    assert norms["y"].min.shape == (2, 4)
-    assert norms["z"].min.shape == (2, 3)
-    assert norms["xy"].min.shape == (4,)
-    assert norms["yz"].min.shape == (2,)
-    assert norms["xyz"].min.shape == ()
+    assert norms["x"].max.shape == (3, 4)
+    assert norms["y"].max.shape == (2, 4)
+    assert norms["z"].max.shape == (2, 3)
+    assert norms["xy"].max.shape == (4,)
+    assert norms["yz"].max.shape == (2,)
+    assert norms["xyz"].max.shape == ()
 
     for n in norms.values():
-        assert n.min is not None
-        if n.min.shape == ():
-            ic(n)
-            assert n.min == 1.0
-        else:
-            assert (n.min == np.ones(n.min.shape)).all()
         assert n.max is not None
         if n.max.shape == ():
             assert n.max == 2.0
@@ -58,11 +52,10 @@ def test_norms_shape():
 def test_norms_values():
     random_values = np.array([random.randrange(1000) for _ in range(1000)])
 
-    norm = nxlib.IncrementalNorm(axis=None)
+    norm = nxlib.IncrementalAccumulator(axis=None)
 
     for r in random_values:
         norm.add(r)
 
-    assert norm.min == np.min(random_values)
     assert norm.max == np.max(random_values)
     assert norm.tic == np.sum(random_values)

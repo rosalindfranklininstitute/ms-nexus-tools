@@ -6,4 +6,4 @@ from . import nxs as nxs
 from . import bounds as bounds
 from .filetypes import DataType
 from . import filter as filter
-from .normalisation import IncrementalNorm
+from .normalisation import IncrementalAccumulator, Norm, Accumulator

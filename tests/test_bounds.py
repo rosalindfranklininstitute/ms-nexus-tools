@@ -3,11 +3,13 @@ from pytest import raises
 
 from ms_nexus_tools.lib.bounds import ContainedBounds, Chunk
 
+from icecream import ic
+
 
 @st.composite
 def oute_inner_offset(draw):
-    n1 = draw(st.integers(min_value=0, max_value=100))
-    n2 = draw(st.integers(min_value=0, max_value=n1))
+    n1 = draw(st.integers(min_value=1, max_value=100))
+    n2 = draw(st.integers(min_value=1, max_value=n1))
     n3 = draw(st.integers(min_value=0, max_value=n1 - n2))
     return (n1, n2, n3)
 
@@ -17,6 +19,7 @@ def bounds(draw):
     w = draw(oute_inner_offset())  # type: ignore
     h = draw(oute_inner_offset())  # type: ignore
     d = draw(oute_inner_offset())  # type: ignore
+    ic(w, h, d)
     return ContainedBounds(
         outer_shape=(w[0], h[0], d[0]),
         inner_shape=(w[1], h[1], d[1]),

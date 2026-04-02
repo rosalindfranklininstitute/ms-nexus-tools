@@ -3,6 +3,7 @@ from enum import Enum
 import numpy as np
 
 from .bounds import Shape
+from .normalisation import Accumulator
 
 
 class Filter(ABC):
@@ -40,11 +41,6 @@ class Filter(ABC):
     @abstractmethod
     def _process_spectra(self, w: int, h: int, spectrum: np.ndarray):
         pass
-
-
-class Accumulator(Enum):
-    TIC = "tic"
-    MAX = "max"
 
 
 class TotalImages(Filter):
