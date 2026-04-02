@@ -23,7 +23,7 @@ from ..lib.chunking import Chunker, count_chunks_to_cover
 from ..lib.filter import MassRangeTotalImage, Accumulator
 from ..lib.nxs import NexusFile
 from ..lib.utils import slice_len, count_digits
-from ..lib.normalisation import Norm, norm
+from ..lib.normalisation import Norm, norm, normalise
 from . import (
     image_plot as nxtic,
     spectrum_plot as nxts,
@@ -210,12 +210,37 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                 f"{title}.layer_{ll + 1:0{layer_digits}}",
                 isp_config,
             )
+
+            def total_spectra():
+                match args.accumulator:
+                    case Accumulator.TIC:
+                        spectra = nx.root.entry.total_spectra.data.signal[
+                            0, ll, :
+                        ].nxdata
+                    case Accumulator.MAX:
+                        spectra = nx.root.entry.total_spectra.data.signal[
+                            1, ll, :
+                        ].nxdata
+                return normalise(spectra, args.scaling)
+
+            def total_images():
+                match args.accumulator:
+                    case Accumulator.TIC:
+                        image = nx.root.entry.total_images.data.signal[
+                            0, ll, :, :
+                        ].nxdata
+                    case Accumulator.MAX:
+                        image = nx.root.entry.total_images.data.signal[
+                            1, ll, :, :
+                        ].nxdata
+                return normalise(image, args.scaling)
+
             if args.plot_total_image:
                 filename = f"{title}.layer_{ll + 1:0{layer_digits}}.image.png"
                 nxtic.process(
                     nxtic.ProcessArgs(
                         title,
-                        nx.root.entry.total_images.data.signal[ll, :, :].nxdata,
+                        total_images(),
                         Path(args.out_dir, filename),
                         plot_args=tic_config,
                     )
@@ -227,7 +252,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                     nxts.ProcessArgs(
                         title,
                         mass_values,
-                        nx.root.entry.total_spectra.data.signal[ll, :].nxdata,
+                        total_spectra(),
                         Path(args.out_dir, filename),
                         plot_args=ts_config,
                     )
@@ -239,7 +264,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                     nxkdm.ProcessArgs(
                         title,
                         mass_values,
-                        nx.root.entry.total_spectra.data.signal[ll, :].nxdata,
+                        total_spectra(),
                         Path(args.out_dir, filename),
                         normalisation=nxkdm.Normalisation.QUADRATIC,
                         plot_args=kdm_config,
