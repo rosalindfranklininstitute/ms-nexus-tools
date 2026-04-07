@@ -3,7 +3,7 @@ from enum import Enum
 import numpy as np
 
 from .bounds import Shape
-from .normalisation import Accumulator
+from .normalisation import Accumulator, IncrementalAccumulator
 
 
 class Filter(ABC):
@@ -154,3 +154,12 @@ class MassRangeTotalImage(Filter):
 
     def width(self) -> int:
         return self._width
+
+    @staticmethod
+    def accumulate_images(mass_images: list["MassRangeTotalImage"], accumulator):
+        image_acc = IncrementalAccumulator(axis=2)
+
+        for mi in mass_images:
+            image_acc.add(mi.image(accumulator))
+
+        return image_acc[accumulator]

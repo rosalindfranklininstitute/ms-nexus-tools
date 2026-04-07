@@ -11,6 +11,7 @@ from . import compound as nxcomp
 
 from ..lib.bounds import Shape
 from ..lib.filter import MassRangeTotalImage, Accumulator
+from ..lib.image import OriginLocation, adjust_origin
 from ..lib.normalisation import norm, Norm
 
 from .image_and_spectrum_plot import (
@@ -89,6 +90,7 @@ class FormulaArgs:
         formulae_images: list[MassRangeTotalImage],
         accumulator: Accumulator,
         normalisation: Norm,
+        origin: OriginLocation,
         target_dir: Path,
         name: str,
         write_txt: bool,
@@ -112,7 +114,7 @@ class FormulaArgs:
                     title,
                     mass_values[fi.slice()],
                     fi.spectrum(accumulator) / scaling,
-                    fi.image(accumulator) / scaling,
+                    adjust_origin(fi.image(accumulator) / scaling, origin),
                     target_dir / f"{filename}.png",
                     plot_args=isp_config,
                 )
@@ -121,7 +123,7 @@ class FormulaArgs:
             if write_txt:
                 np.savetxt(
                     target_dir / f"{filename}.image.txt",
-                    fi.image(accumulator) / scaling,
+                    adjust_origin(fi.image(accumulator) / scaling, origin),
                 )
 
                 total_spectra_data = np.array(

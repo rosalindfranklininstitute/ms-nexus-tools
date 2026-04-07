@@ -21,6 +21,7 @@ from .formula_args import FormulaArgs
 from .mass_range_args import MassRangeArgs
 from ..lib.chunking import Chunker, count_chunks_to_cover
 from ..lib.filter import MassRangeTotalImage, Accumulator
+from ..lib.image import OriginLocation, adjust_origin
 from ..lib.nxs import NexusFile
 from ..lib.utils import slice_len, count_digits
 from ..lib.normalisation import Norm, norm, normalise
@@ -32,13 +33,6 @@ from . import (
 )
 
 install()
-
-
-class OriginLocatoin(Enum):
-    UPPER_LEFT = "upper left"
-    UPPER_RIGHT = "upper right"
-    LOWER_LEFT = "lower left"
-    LOWER_RIGHT = "lower right"
 
 
 @dataclass
@@ -103,10 +97,10 @@ class ProcessArgs(
         doc="If present will plot the total Kendrick Mass Defect per layer.",
     )
 
-    origin: OriginLocatoin = arg_field(
+    origin: OriginLocation = arg_field(
         doc="The location of the origin in the images.",
-        choices=[t for t in OriginLocatoin],
-        default=OriginLocatoin.UPPER_LEFT,
+        choices=[t for t in OriginLocation],
+        default=OriginLocation.UPPER_LEFT,
     )
 
     write_txt: bool = arg_field(
@@ -200,23 +194,12 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                 formula_images,
                 args.accumulator,
                 args.scaling,
+                args.origin,
                 args.out_dir,
                 f"{title}.layer_{ll + 1:0{layer_digits}}",
                 args.write_txt,
                 isp_config,
             )
-
-            if args.accumulate_masses:
-                args.accumulate_mass_ranges(
-                    mass_range_data,
-                    mass_images,
-                    args.accumulator,
-                    args.scaling,
-                    args.out_dir,
-                    f"{title}.layer_{ll + 1:0{layer_digits}}",
-                    args.write_txt,
-                    tic_config,
-                )
 
             args.plot_mass_ranges(
                 mass_values,
@@ -224,6 +207,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                 mass_images,
                 args.accumulator,
                 args.scaling,
+                args.origin,
                 args.out_dir,
                 f"{title}.layer_{ll + 1:0{layer_digits}}",
                 args.write_txt,
@@ -252,9 +236,23 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                         image = nx.root.entry.total_images.data.signal[
                             1, ll, :, :
                         ].nxdata
-                return normalise(image, args.scaling)
+                return adjust_origin(normalise(image, args.scaling), args.origin)
 
             filename = f"{title}.layer_{ll + 1:0{layer_digits}}.{args.accumulator.value}_{args.scaling.value}"
+
+            if args.accumulate_masses:
+                image = MassRangeTotalImage.accumulate_images(
+                    [*mass_images, *formula_images], args.accumulator
+                )
+
+                nxtic.process(
+                    nxtic.ProcessArgs(
+                        f"{title}: Accumulated mass ranges",
+                        adjust_origin(normalise(image, args.scaling), args.origin),
+                        args.out_dir / f"{filename}.acc.png",
+                        plot_args=tic_config,
+                    )
+                )
             if args.write_txt:
                 np.savetxt(
                     args.out_dir / f"{filename}.image.txt",

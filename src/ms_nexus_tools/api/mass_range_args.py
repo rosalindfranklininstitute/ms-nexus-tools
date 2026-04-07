@@ -6,6 +6,7 @@ from typing import NamedTuple
 import numpy as np
 
 from ..lib.bounds import Shape
+from ..lib.image import OriginLocation, adjust_origin
 from ..lib.filter import MassRangeTotalImage, Accumulator
 from ..lib.normalisation import norm, Norm, IncrementalAccumulator
 
@@ -85,6 +86,7 @@ class MassRangeArgs:
         mass_images: list[MassRangeTotalImage],
         accumulator: Accumulator,
         normalisation: Norm,
+        origin: OriginLocation,
         target_dir: Path,
         name: str,
         write_txt: bool,
@@ -102,7 +104,10 @@ class MassRangeArgs:
                     title,
                     mass_values[mi.slice()],
                     mi.spectrum(accumulator) / scaling,
-                    mi.image(accumulator) / scaling,
+                    adjust_origin(
+                        mi.image(accumulator) / scaling,
+                        origin,
+                    ),
                     target_dir / f"{filename}.png",
                     plot_args=isp_config,
                 )
@@ -111,7 +116,10 @@ class MassRangeArgs:
             if write_txt:
                 np.savetxt(
                     target_dir / f"{filename}.image.txt",
-                    mi.image(accumulator) / scaling,
+                    adjust_origin(
+                        mi.image(accumulator) / scaling,
+                        origin,
+                    ),
                 )
 
                 total_spectra_data = np.array(
