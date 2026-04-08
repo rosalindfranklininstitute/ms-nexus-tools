@@ -1,5 +1,7 @@
 import argparse
 
+from pathlib import Path
+
 import datargs
 from ..api import data_query
 
@@ -12,3 +14,25 @@ def query():
         args=partial_args.remaining_args,
     )
     data_query.process(process_args, partial_args.config)
+
+
+class NxsFileTypes(datargs.FileDetails):
+    def file_extension(self) -> str:
+        return ".nxs"
+
+    def filter(self, path: Path) -> bool:
+        return True
+
+    def target_name(self, in_path: Path) -> Path:
+        return in_path.parent
+
+
+def bulk_query():
+    datargs.process_bulk(
+        "query",
+        data_query.ProcessArgs,
+        data_query.process,
+        NxsFileTypes(),
+        input_arg_name="in_path",
+        output_arg_name="out_dir",
+    )

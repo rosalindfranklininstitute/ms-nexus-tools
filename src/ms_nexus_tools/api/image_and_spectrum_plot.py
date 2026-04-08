@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, NamedTuple
 from dataclasses import dataclass, field
 import tomllib
 from pathlib import Path
@@ -10,17 +10,18 @@ import matplotlib.pyplot as plt
 from . import compound
 
 
+class AxCommand(NamedTuple):
+    command: str
+    kwargs: dict[str, Any]
+
+
 @dataclass
 class PlotKwArgs:
     plot_kw_args: dict[str, Any] = field(default_factory=dict)
-    plot_axes_commands_and_kw_args: dict[str, dict[str, Any]] = field(
-        default_factory=dict
-    )
+    plot_axes_commands_and_kw_args: list[AxCommand] = field(default_factory=list)
 
     imshow_kw_args: dict[str, Any] = field(default_factory=dict)
-    imshow_axes_commands_and_kw_args: dict[str, dict[str, Any]] = field(
-        default_factory=dict
-    )
+    imshow_axes_commands_and_kw_args: list[AxCommand] = field(default_factory=list)
     colorbar_kw_args: dict[str, Any] = field(default_factory=dict)
 
     savefig_kw_args: dict[str, Any] = field(default_factory=dict)
@@ -68,13 +69,13 @@ def process(args: ProcessArgs) -> None:
 
     axs[1].plot(args.mass, args.spectra, **args.plot_args.plot_kw_args)
 
-    for command, kwargs in args.plot_args.plot_axes_commands_and_kw_args.items():
-        axs[1].__getattribute__(command)(**kwargs)
+    for command in args.plot_args.plot_axes_commands_and_kw_args:
+        axs[1].__getattribute__(command.command)(**command.kwargs)
 
     im = axs[0].imshow(args.image, **args.plot_args.imshow_kw_args)
 
-    for command, kwargs in args.plot_args.imshow_axes_commands_and_kw_args.items():
-        axs[0].__getattribute__(command)(**kwargs)
+    for command in args.plot_args.imshow_axes_commands_and_kw_args:
+        axs[0].__getattribute__(command.command)(**command.kwargs)
 
     fig.colorbar(im, ax=axs[0], location="bottom", **args.plot_args.colorbar_kw_args)
 

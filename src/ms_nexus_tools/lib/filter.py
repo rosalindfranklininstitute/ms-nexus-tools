@@ -1,3 +1,4 @@
+from typing import Optional
 from abc import ABC, abstractmethod
 from enum import Enum
 import numpy as np
@@ -156,10 +157,17 @@ class MassRangeTotalImage(Filter):
         return self._width
 
     @staticmethod
-    def accumulate_images(mass_images: list["MassRangeTotalImage"], accumulator):
+    def accumulate_images(
+        mass_images: list["MassRangeTotalImage"], accumulator
+    ) -> Optional[np.ndarray]:
         image_acc = IncrementalAccumulator(axis=2)
+
+        if len(mass_images) == 0:
+            return None
 
         for mi in mass_images:
             image_acc.add(mi.image(accumulator))
 
+        if image_acc.is_empty(accumulator):
+            return None
         return image_acc[accumulator]

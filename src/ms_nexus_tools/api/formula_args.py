@@ -15,6 +15,7 @@ from ..lib.image import OriginLocation, adjust_origin
 from ..lib.normalisation import norm, Norm
 
 from .image_and_spectrum_plot import (
+    AxCommand,
     PlotKwArgs as ISPKwArgs,
     ProcessArgs as ISPProcessArgs,
     process as isp_process,
@@ -105,8 +106,11 @@ class FormulaArgs:
             filename = f"{name}.{accumulator.value}_{normalisation.value}.{fd.formula}"
             title = f"{name}: ({accumulator.value}/{normalisation.value}): {fd.formula}"
 
-            isp_config.plot_axes_commands_and_kw_args.update(
-                dict(axvline=dict(x=fd.mass, linewidth=0.5, linestyle=":"))
+            isp_config.plot_axes_commands_and_kw_args.append(
+                AxCommand(
+                    command="axvline",
+                    kwargs=dict(x=fd.mass, linewidth=0.5, linestyle=":"),
+                )
             )
             scaling = norm(fi.spectrum(accumulator), normalisation)
             isp_process(

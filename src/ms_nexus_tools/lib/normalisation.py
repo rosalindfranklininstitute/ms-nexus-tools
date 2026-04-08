@@ -70,9 +70,18 @@ class IncrementalAccumulator:
         self.max = _operate(np.nanmax, self.max, data, axis_to_use)
         self.tic = _operate(np.nansum, self.tic, data, axis_to_use)
 
-    def __getitem__(self, index: str | Accumulator):
+    def __getitem__(self, index: str | Accumulator) -> np.ndarray:
         match index:
             case Accumulator.MAX | Accumulator.MAX.value:
                 return self.max
             case Accumulator.TIC | Accumulator.TIC.value:
                 return self.tic
+            case _:
+                raise TypeError(f"Could not find specified accumulator {index}")
+
+    def is_empty(self, index: str | Accumulator) -> bool:
+        value = self[index]
+        if len(value) == 1:
+            return bool(np.isnan(value).all())
+        else:
+            return False

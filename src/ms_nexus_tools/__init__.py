@@ -10,7 +10,7 @@ from .cli.compound import compound
 from .cli.mass_image import massimage
 from .cli.spectrum_image import specimage
 from .cli.inspect_h5 import inspect
-from .cli.query import query
+from .cli.query import query, bulk_query
 
 
 def main() -> None:

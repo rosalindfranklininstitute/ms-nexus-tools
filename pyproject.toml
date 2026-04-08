@@ -31,6 +31,7 @@ specimage = "ms_nexus_tools:specimage"
 inspect = "ms_nexus_tools:inspect"
 test = "ms_nexus_tools:test"
 query = "ms_nexus_tools:query"
+bulk_query = "ms_nexus_tools:bulk_query"
 
 [build-system]
 requires = ["uv_build>=0.10.0,<0.11.0"]

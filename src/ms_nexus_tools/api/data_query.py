@@ -3,10 +3,14 @@ from typing import Any
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+import logging
+import itertools
 
 import numpy as np
+import scipy
 
-from icecream import ic, install
+from tqdm import tqdm
+
 
 from datargs import (
     arg_field,
@@ -17,8 +21,13 @@ from datargs import (
     DirPathType,
 )
 from .image_args import MassSliceArgs, WidthAndHeightSliceArgs, LayerSliceArgs
-from .formula_args import FormulaArgs
-from .mass_range_args import MassRangeArgs
+from .mass_range_args import (
+    MassRange,
+    MassRangeArgs,
+    MassCentreArgs,
+    plot_mass_ranges,
+    accumulate_mass_ranges,
+)
 from ..lib.chunking import Chunker, count_chunks_to_cover
 from ..lib.filter import MassRangeTotalImage, Accumulator
 from ..lib.image import OriginLocation, adjust_origin
@@ -32,7 +41,11 @@ from . import (
     kendrick_mass_defect_plot as nxkdm,
 )
 
+from icecream import ic, install
+
 install()
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -42,7 +55,7 @@ class ProcessArgs(
     MassSliceArgs,
     WidthAndHeightSliceArgs,
     LayerSliceArgs,
-    FormulaArgs,
+    MassCentreArgs,
     MassRangeArgs,
 ):
     in_path: Path = arg_field(
@@ -108,6 +121,32 @@ class ProcessArgs(
         doc="If present will write out all images and spectra to .txt files using numpy.savetxt.",
     )
 
+    subpixels: float = arg_field(
+        doc="""
+        The number of pixels in the output image for every pixel in the input image. 
+        i.e. --subpixels=2 will have twice the number of pixels as the original data. 
+        See [scipy.ndimage.zoom](https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.zoom.html) for details. 
+        The new pixel value will be calculated by interpolation.
+        """,
+        action="store",
+        default=1.0,
+    )
+
+    interpolation_order: int = arg_field(
+        "--interpolation",
+        "--int-otder",
+        doc="""
+        The order of the spline to use for finding the values of subpixels. 
+        0 is nearest neighbout, 1 is linear, etc. Maximum is 5. See [scipy.ndimage.zoom](https://docs.scipy.org/doc/scipy/reference/generated/scipy.ndimage.zoom.html) for details. 
+        Values outside the image are treated as having a value of 0.
+        Note: that interpolation takes place after normalisation (accumulation and scaling).
+        Note: that interpolation takes place before writing images and txt files.
+        """,
+        action="store",
+        default=0,
+        choices=[i for i in range(5)],
+    )
+
 
 def process(args: ProcessArgs, config: dict[str, Any] = {}):
 
@@ -140,21 +179,20 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
             slice_len(mass_slice),
         )
 
-        formula_data, formula_images = args.get_formulae_filters(
+        centre_data, centre_images = args.get_centre_filters(
             data_shape[1:], mass_values
         )
-        mass_range_data, mass_images = args.get_mass_filters(
-            data_shape[1:], mass_values
-        )
+        range_data, range_images = args.get_mass_filters(data_shape[1:], mass_values)
 
-        total_mass_width = sum([f.mass_index_width for f in formula_data])
-        total_mass_width += sum([m.mass_index_width for m in mass_range_data])
+        total_mass_width = sum([f.mass_index_width for f in range_data])
+        total_mass_width += sum([m.mass_index_width for m in range_data])
 
         spectra_chunk_count = np.prod(
             count_chunks_to_cover(shape, nx.root.entry.spectra.data.signal.chunks)
         )
 
-        images: list[MassRangeTotalImage] = [*mass_images, *formula_images]
+        mass_data: list[MassRange] = [*range_data, *centre_data]
+        mass_images: list[MassRangeTotalImage] = [*range_images, *centre_images]
         image_chunking = nx.root.entry.images.data.signal.chunks
         images_chunk_count = np.sum(
             [
@@ -163,56 +201,76 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                         (*data_shape[0:3], img.width()), image_chunking
                     )
                 )
-                for img in images
+                for img in mass_images
             ]
         )
 
         layer_digits = count_digits(data_shape[0])
         for ll in range(layer_slice.start, layer_slice.stop):
-            for image in images:
+            for image in mass_images:
                 image.clear()
 
             if images_chunk_count < spectra_chunk_count:
-                for image in images:
-                    for bb in image.range():
-                        for inner_image in images:
-                            inner_image.add_image(
-                                bb, nx.root.entry.images.data.signal[ll, :, :, bb]
-                            )
+                print(f"Querying by image: {images_chunk_count}")
+                bins = set()
+                for image in mass_images:
+                    bins.update([bb for bb in image.range()])
+                for bb in tqdm(sorted(bins)):
+                    for inner_image in mass_images:
+                        inner_image.add_image(
+                            bb, nx.root.entry.images.data.signal[ll, :, :, bb]
+                        )
             else:
-                for x in range(width_slice.start, width_slice.stop):
-                    for y in range(width_slice.start, width_slice.stop):
-                        for image in images:
-                            image.add_spectra(
-                                x, y, nx.root.entry.spectra.data.signal[ll, x, y, :]
-                            )
+                print(f"Querying by spectra: {spectra_chunk_count}")
+                xy = [
+                    (x, y)
+                    for x, y in itertools.product(
+                        range(width_slice.start, width_slice.stop),
+                        range(height_slice.start, height_slice.stop),
+                    )
+                ]
+                for x, y in tqdm(xy):
+                    for image in mass_images:
+                        image.add_spectra(
+                            x, y, nx.root.entry.spectra.data.signal[ll, x, y, :]
+                        )
 
             title = f"{args.in_path.stem}"
-            args.plot_formulae_ranges(
-                mass_values,
-                formula_data,
-                formula_images,
-                args.accumulator,
-                args.scaling,
-                args.origin,
-                args.out_dir,
-                f"{title}.layer_{ll + 1:0{layer_digits}}",
-                args.write_txt,
-                isp_config,
-            )
+            norm_title = f"({args.accumulator.value}/{args.scaling.value})"
 
-            args.plot_mass_ranges(
+            plot_mass_ranges(
                 mass_values,
-                mass_range_data,
+                mass_data,
                 mass_images,
                 args.accumulator,
                 args.scaling,
+                args.subpixels,
+                args.interpolation_order,
                 args.origin,
                 args.out_dir,
                 f"{title}.layer_{ll + 1:0{layer_digits}}",
                 args.write_txt,
                 isp_config,
             )
+
+            if args.accumulate_masses:
+                try:
+                    accumulate_mass_ranges(
+                        mass_images,
+                        args.accumulator,
+                        args.scaling,
+                        args.subpixels,
+                        args.interpolation_order,
+                        args.origin,
+                        args.out_dir,
+                        f"{title}.layer_{ll + 1:0{layer_digits}}",
+                        args.write_txt,
+                        tic_config,
+                    )
+                except RuntimeError:
+                    logger.warning(
+                        "Requested an accumulated image, but there was no data for the masses specified."
+                    )
 
             def total_spectra():
                 match args.accumulator:
@@ -236,23 +294,19 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                         image = nx.root.entry.total_images.data.signal[
                             1, ll, :, :
                         ].nxdata
-                return adjust_origin(normalise(image, args.scaling), args.origin)
+                if abs(args.subpixels - 1.0) < 1e-2:
+                    return adjust_origin(normalise(image, args.scaling), args.origin)
+                else:
+                    return scipy.ndimage.zoom(
+                        adjust_origin(normalise(image, args.scaling), args.origin),
+                        zoom=args.subpixels,
+                        order=args.interpolation_order,
+                        mode="constant",
+                        cval=0.0,
+                    )
 
             filename = f"{title}.layer_{ll + 1:0{layer_digits}}.{args.accumulator.value}_{args.scaling.value}"
 
-            if args.accumulate_masses:
-                image = MassRangeTotalImage.accumulate_images(
-                    [*mass_images, *formula_images], args.accumulator
-                )
-
-                nxtic.process(
-                    nxtic.ProcessArgs(
-                        f"{title}: Accumulated mass ranges",
-                        adjust_origin(normalise(image, args.scaling), args.origin),
-                        args.out_dir / f"{filename}.acc.png",
-                        plot_args=tic_config,
-                    )
-                )
             if args.write_txt:
                 np.savetxt(
                     args.out_dir / f"{filename}.image.txt",
@@ -265,13 +319,10 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                     args.out_dir / f"{filename}.spectrum.txt", total_spectra_data
                 )
 
-            title = (
-                f"{args.in_path.stem}: ({args.accumulator.value}/{args.scaling.value})"
-            )
             if args.plot_total_image:
                 nxtic.process(
                     nxtic.ProcessArgs(
-                        title,
+                        f"{title}: Total Image: {norm_title}",
                         total_images(),
                         args.out_dir / f"{filename}.image.png",
                         plot_args=tic_config,
@@ -281,7 +332,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
             if args.plot_total_spectrum:
                 nxts.process(
                     nxts.ProcessArgs(
-                        title,
+                        f"{title}: Total Spectrum: {norm_title}",
                         mass_values,
                         total_spectra(),
                         args.out_dir / f"{filename}.spectrum.png",
@@ -292,7 +343,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
             if args.plot_kdm:
                 nxkdm.process(
                     nxkdm.ProcessArgs(
-                        title,
+                        f"{title}: Total KDM: {norm_title}",
                         mass_values,
                         total_spectra(),
                         args.out_dir / f"{filename}.kdm.png",
