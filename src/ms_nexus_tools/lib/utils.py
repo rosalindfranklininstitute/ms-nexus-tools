@@ -1,3 +1,6 @@
+from typing import Iterator, Any, Iterable
+
+
 def count_digits(num: int) -> int:
     """
     Counts the number of digits in an integer:
@@ -36,3 +39,23 @@ def slice_len(slc: slice) -> int:
         return slc.stop // inc
     else:
         return (slc.stop - slc.start) // inc
+
+
+class NotTqdm:
+    def __init__(self, iterator: Iterable | None = None, **kwargs):
+        self.iterator = iterator
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def __iter__(self) -> Iterator[Any]:
+        if self.iterator is None:
+            raise TypeError("NotTqdm expected an iterable when used as an iterator.")
+        for item in self.iterator:
+            yield item
+
+    def update(self):
+        pass

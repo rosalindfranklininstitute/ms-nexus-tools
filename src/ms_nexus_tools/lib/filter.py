@@ -64,7 +64,7 @@ class TotalImages(Filter):
         self.tic_image[:, :] += image[:, :]
         self.tic_spectrum[bin] = np.sum(image)
 
-        self.max_image[:, :] = np.max([self.max_image, image], axis=0)
+        self.max_image[:, :] = np.maximum(self.max_image, image)
         self.max_spectrum[bin] = np.max(image)
 
         return image
@@ -74,7 +74,7 @@ class TotalImages(Filter):
         self.tic_spectrum[:] += spectrum[:]
 
         self.max_image[w, h] = np.max(spectrum)
-        self.max_spectrum[:] = np.max([self.max_spectrum, spectrum], axis=0)
+        self.max_spectrum[:] = np.maximum(self.max_spectrum, spectrum)
 
         return spectrum
 

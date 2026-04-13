@@ -162,7 +162,7 @@ def create_field(
 def create_chunked_subentry(
     nxs: NexusFile,
     name: str,
-    min_items_per_chunk: int,
+    max_items_per_chunk: int,
     memory_shape: Shape,
     data_shape: Shape,
     priorities: Shape,
@@ -171,10 +171,10 @@ def create_chunked_subentry(
     assert len(data_shape) == len(priorities)
     assert len(data_shape) == len(axes)
 
-    chunks = Chunker.from_min_item_count(
+    chunks = Chunker.from_max_item_count(
         data_shape=memory_shape,
         priorities=priorities,
-        items_per_chunk=min_items_per_chunk,
+        items_per_chunk=max_items_per_chunk,
     )
     subentry = nxs.create_subentry(
         name,
@@ -269,7 +269,7 @@ def create_standard_file(
     out_chunk: Chunk,
     out_path: Path,
     axes: GenericAxis | None = None,
-    min_items_per_chunk: int = 46000,
+    max_items_per_chunk: int = 46000,
 ):
     cbounds = ContainedBounds.from_chunk(outer_shape=data_shape, inner_chunk=out_chunk)
 
@@ -323,59 +323,57 @@ def create_standard_file(
         total_axes.append(inner_list)
 
     nxs = NexusFile(out_path, mode="w")
-    with nxs.as_context():
-        spectra_chunks, spectra = create_chunked_subentry(
-            nxs,
-            "spectra",
-            min_items_per_chunk=min_items_per_chunk,
-            memory_shape=cbounds.outer_shape,
-            data_shape=cbounds.inner_shape,
-            priorities=(3, 2, 2, 1),
-            axes=axes,
-        )
+    spectra_chunks, spectra = create_chunked_subentry(
+        nxs,
+        "spectra",
+        max_items_per_chunk=max_items_per_chunk,
+        memory_shape=cbounds.outer_shape,
+        data_shape=cbounds.inner_shape,
+        priorities=(3, 2, 2, 1),
+        axes=axes,
+    )
 
-        total_spectra_chunks, total_spectra = create_chunked_subentry(
-            nxs,
-            "total_spectra",
-            min_items_per_chunk=min_items_per_chunk,
-            memory_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
-            data_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
-            priorities=(3, 2, 1),
-            axes=GenericAxis([total_axes[0], total_axes[1], total_axes[4]]),
-        )
+    total_spectra_chunks, total_spectra = create_chunked_subentry(
+        nxs,
+        "total_spectra",
+        max_items_per_chunk=max_items_per_chunk,
+        memory_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
+        data_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
+        priorities=(3, 2, 1),
+        axes=GenericAxis([total_axes[0], total_axes[1], total_axes[4]]),
+    )
 
-        image_chunks, images = create_chunked_subentry(
-            nxs,
-            "images",
-            min_items_per_chunk=min_items_per_chunk,
-            memory_shape=cbounds.outer_shape,
-            data_shape=cbounds.inner_shape,
-            priorities=(3, 1, 1, 2),
-            axes=axes,
-        )
+    image_chunks, images = create_chunked_subentry(
+        nxs,
+        "images",
+        max_items_per_chunk=max_items_per_chunk,
+        memory_shape=cbounds.outer_shape,
+        data_shape=cbounds.inner_shape,
+        priorities=(3, 1, 1, 2),
+        axes=axes,
+    )
 
-        total_image_chunks, total_images = create_chunked_subentry(
-            nxs,
-            "total_images",
-            min_items_per_chunk=min_items_per_chunk,
-            memory_shape=(
-                acc_count,
-                cbounds.inner_shape[0],
-                cbounds.inner_shape[1],
-                cbounds.inner_shape[2],
-            ),
-            data_shape=(
-                acc_count,
-                cbounds.inner_shape[0],
-                cbounds.inner_shape[1],
-                cbounds.inner_shape[2],
-            ),
-            priorities=(3, 2, 1, 1),
-            axes=GenericAxis(
-                [total_axes[0], total_axes[1], total_axes[2], total_axes[3]]
-            ),
-        )
+    total_image_chunks, total_images = create_chunked_subentry(
+        nxs,
+        "total_images",
+        max_items_per_chunk=max_items_per_chunk,
+        memory_shape=(
+            acc_count,
+            cbounds.inner_shape[0],
+            cbounds.inner_shape[1],
+            cbounds.inner_shape[2],
+        ),
+        data_shape=(
+            acc_count,
+            cbounds.inner_shape[0],
+            cbounds.inner_shape[1],
+            cbounds.inner_shape[2],
+        ),
+        priorities=(3, 2, 1, 1),
+        axes=GenericAxis([total_axes[0], total_axes[1], total_axes[2], total_axes[3]]),
+    )
     return (
+        nxs,
         cbounds,
         (spectra_chunks, total_spectra_chunks, image_chunks, total_image_chunks),
     )
