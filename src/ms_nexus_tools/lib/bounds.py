@@ -27,7 +27,7 @@ class Chunk(list[slice]):
         return range(self[index].start, self[index].stop)
 
     def arange(self, index: int, step: int | float = 1) -> np.ndarray:
-        return np.arange(self[1].start, self[1].stop, step)
+        return np.arange(self[index].start, self[index].stop, step)
 
     @property
     def shape(self) -> Shape:

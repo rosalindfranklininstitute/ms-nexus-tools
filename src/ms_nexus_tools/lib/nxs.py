@@ -59,7 +59,7 @@ class GenericAxis(list[list[Axis]]):
         return results
 
     def add_to_group(self, group: NXdata):
-        group.attrs["axes"] = ",".join(self.default_list())
+        group.attrs["axes"] = self.default_list()
         for ax in self.list_all():
             ax.add_to_group(group)
 
@@ -171,10 +171,10 @@ def create_chunked_subentry(
     assert len(data_shape) == len(priorities)
     assert len(data_shape) == len(axes)
 
-    chunks = Chunker.from_item_count(
+    chunks = Chunker.from_min_item_count(
         data_shape=memory_shape,
         priorities=priorities,
-        min_items_per_chunk=min_items_per_chunk,
+        items_per_chunk=min_items_per_chunk,
     )
     subentry = nxs.create_subentry(
         name,
