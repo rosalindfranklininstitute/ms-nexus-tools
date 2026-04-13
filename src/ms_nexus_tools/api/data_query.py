@@ -1,3 +1,4 @@
+from ms_nexus_tools.lib.bounds import Chunk
 from typing import Any
 
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ from tqdm import tqdm
 
 
 from datargs import (
+    no_arg_field,
     arg_field,
     ArgType,
     ConfigFileArgs,
@@ -28,6 +30,7 @@ from .mass_range_args import (
     plot_mass_ranges,
     accumulate_mass_ranges,
 )
+from ..lib.data_source import AbstractQuerySource
 from ..lib.chunking import Chunker, count_chunks_to_cover
 from ..lib.filter import MassRangeTotalImage, Accumulator
 from ..lib.image import OriginLocation, adjust_origin
@@ -147,6 +150,8 @@ class ProcessArgs(
         choices=[i for i in range(5)],
     )
 
+    query_source: AbstractQuerySource = no_arg_field(default=None)
+
 
 def process(args: ProcessArgs, config: dict[str, Any] = {}):
 
@@ -162,9 +167,9 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
         kdm_config = nxkdm.PlotKwArgs.read_config(config, "kendrick_mass_defect")
     isp_config = nxisp.PlotKwArgs.read_config(config, "calibration_plot")
 
-    with nx_file.as_context() as nx:
-        shape = nx.root.entry.spectra.data.signal.shape
-        mass_values = nx.root.entry.spectra.data.mass.nxdata
+    with args.query_source as nx:
+        shape = nx.shape()
+        mass_values = nx.mass_values()
 
         layer_slice = args.calculate_layer_slice(shape[0])
         width_slice, height_slice = args.calculate_width_and_height_slice(
@@ -172,6 +177,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
         )
         mass_slice = args.calculate_mass_slice(mass_values)
 
+        inner_chunk = Chunk([layer_slice, width_slice, height_slice, mass_slice])
         data_shape = (
             slice_len(layer_slice),
             slice_len(width_slice),
@@ -184,56 +190,27 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
         )
         range_data, range_images = args.get_mass_filters(data_shape[1:], mass_values)
 
-        total_mass_width = sum([f.mass_index_width for f in range_data])
-        total_mass_width += sum([m.mass_index_width for m in range_data])
-
-        spectra_chunk_count = np.prod(
-            count_chunks_to_cover(shape, nx.root.entry.spectra.data.signal.chunks)
-        )
-
         mass_data: list[MassRange] = [*range_data, *centre_data]
         mass_images: list[MassRangeTotalImage] = [*range_images, *centre_images]
-        image_chunking = nx.root.entry.images.data.signal.chunks
-        images_chunk_count = np.sum(
-            [
-                np.prod(
-                    count_chunks_to_cover(
-                        (*data_shape[0:3], img.width()), image_chunking
-                    )
-                )
-                for img in mass_images
-            ]
-        )
+
+        bins = set()
+        for image in mass_images:
+            bins.update([bb for bb in image.range()])
+        bins: list[int] = sorted(bins)
+        xy = [
+            (x, y)
+            for x, y in itertools.product(
+                range(width_slice.start, width_slice.stop),
+                range(height_slice.start, height_slice.stop),
+            )
+        ]
 
         layer_digits = count_digits(data_shape[0])
         for ll in range(layer_slice.start, layer_slice.stop):
             for image in mass_images:
                 image.clear()
 
-            if images_chunk_count < spectra_chunk_count:
-                print(f"Querying by image: {images_chunk_count}")
-                bins = set()
-                for image in mass_images:
-                    bins.update([bb for bb in image.range()])
-                for bb in tqdm(sorted(bins)):
-                    for inner_image in mass_images:
-                        inner_image.add_image(
-                            bb, nx.root.entry.images.data.signal[ll, :, :, bb]
-                        )
-            else:
-                print(f"Querying by spectra: {spectra_chunk_count}")
-                xy = [
-                    (x, y)
-                    for x, y in itertools.product(
-                        range(width_slice.start, width_slice.stop),
-                        range(height_slice.start, height_slice.stop),
-                    )
-                ]
-                for x, y in tqdm(xy):
-                    for image in mass_images:
-                        image.add_spectra(
-                            x, y, nx.root.entry.spectra.data.signal[ll, x, y, :]
-                        )
+            nx.fill_filters(ll, bins, xy, mass_images, inner_chunk)
 
             title = f"{args.in_path.stem}"
             norm_title = f"({args.accumulator.value}/{args.scaling.value})"
@@ -273,27 +250,11 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                     )
 
             def total_spectra():
-                match args.accumulator:
-                    case Accumulator.TIC:
-                        spectra = nx.root.entry.total_spectra.data.signal[
-                            0, ll, :
-                        ].nxdata
-                    case Accumulator.MAX:
-                        spectra = nx.root.entry.total_spectra.data.signal[
-                            1, ll, :
-                        ].nxdata
+                spectra = nx.accumulated_spectrum(args.accumulator, ll)
                 return normalise(spectra, args.scaling)
 
             def total_images():
-                match args.accumulator:
-                    case Accumulator.TIC:
-                        image = nx.root.entry.total_images.data.signal[
-                            0, ll, :, :
-                        ].nxdata
-                    case Accumulator.MAX:
-                        image = nx.root.entry.total_images.data.signal[
-                            1, ll, :, :
-                        ].nxdata
+                image = nx.accumulated_image(args.accumulator, ll)
                 if abs(args.subpixels - 1.0) < 1e-2:
                     return adjust_origin(normalise(image, args.scaling), args.origin)
                 else:

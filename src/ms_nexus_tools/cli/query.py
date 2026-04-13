@@ -1,9 +1,8 @@
-import argparse
-
 from pathlib import Path
 
 import datargs
 from ..api import data_query
+from ..lib.nxs_source import NxsQuerySource
 
 
 def query():
@@ -13,6 +12,8 @@ def query():
         exclude=["config"],
         args=partial_args.remaining_args,
     )
+    process_args.query_source = NxsQuerySource(process_args.in_path)
+
     data_query.process(process_args, partial_args.config)
 
 
