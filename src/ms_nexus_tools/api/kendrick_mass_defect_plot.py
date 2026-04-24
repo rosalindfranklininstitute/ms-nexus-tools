@@ -58,11 +58,8 @@ def process(args: ProcessArgs) -> None:
 
     comp_properties = compound.process(compound.ProcessArgs(args.normalising_formula))
 
-    km = (
-        args.mass
-        * np.round(comp_properties.lightest_monoisotropic_mass)
-        / comp_properties.lightest_monoisotropic_mass
-    )
+    compound_knm = np.round(comp_properties.lightest_monoisotropic_mass)
+    km = args.mass * compound_knm / comp_properties.lightest_monoisotropic_mass
     knm = np.round(km)
     kmd = km - knm
 
@@ -78,7 +75,12 @@ def process(args: ProcessArgs) -> None:
     fig, ax = plt.subplots()
     if args.title is not None:
         fig.suptitle(args.title)
+    ax.set_title(f"Kendrick Mass Plot for {args.normalising_formula} = {compound_knm}")
     ax.scatter(knm, kmd, sizes=sizes, **args.plot_args.scatter_kw_args)
+    ax.set_xlabel(
+        f"Kendric Normalised Mass (m/z * {compound_knm:.0f}/{comp_properties.lightest_monoisotropic_mass:.2f})"
+    )
+    ax.set_ylabel("Mass Defect (round(m/z) - KNM)")
 
     for command, kwargs in args.plot_args.axes_commands_and_kw_args.items():
         ax.__getattribute__(command)(**kwargs)

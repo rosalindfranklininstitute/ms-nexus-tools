@@ -6,11 +6,13 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
+from ..lib.plot_utils import AxCommand
+
 
 @dataclass
 class PlotKwArgs:
     plot_kw_args: dict[str, Any] = field(default_factory=dict)
-    axes_commands_and_kw_args: dict[str, dict[str, Any]] = field(default_factory=dict)
+    axes_commands_and_kw_args: list[AxCommand] = field(default_factory=dict)
     savefig_kw_args: dict[str, Any] = field(default_factory=dict)
 
     @staticmethod
@@ -47,10 +49,12 @@ def process(args: ProcessArgs) -> None:
     if args.title is not None:
         fig.suptitle(args.title)
 
+    ax.set_title("Mass spectrum")
     ax.plot(args.mass, args.spectra, **args.plot_args.plot_kw_args)
+    ax.set_xlabel("m/z")
 
-    for command, kwargs in args.plot_args.axes_commands_and_kw_args.items():
-        ax.__getattribute__(command)(**kwargs)
+    for command in args.plot_args.axes_commands_and_kw_args:
+        ax.__getattribute__(command.command)(**command.kwargs)
 
     fig.savefig(args.target_file_name, **args.plot_args.savefig_kw_args)
     plt.close(fig)

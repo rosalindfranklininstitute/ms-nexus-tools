@@ -124,17 +124,18 @@ class MassSliceArgs:
     def calculate_mass_slice(
         self, mass_axis: Sequence[int | float] | np.ndarray
     ) -> slice:
-        if self.use_mass:
-            return _slice(
-                bisect.bisect_left(mass_axis, self.start_mass),
-                bisect.bisect_right(mass_axis, self.end_mass)
-                if self.end_mass is not None
-                else None,
-                len(mass_axis),
-            )
-        else:
-            return _slice(
-                int(self.start_mass),
-                int(self.end_mass if self.end_mass is not None else None),
-                len(mass_axis),
-            )
+        match self.use_mass:
+            case MassMeasure.MASS:
+                return _slice(
+                    bisect.bisect_left(mass_axis, self.start_mass),
+                    bisect.bisect_right(mass_axis, self.end_mass)
+                    if self.end_mass is not None
+                    else None,
+                    len(mass_axis),
+                )
+            case MassMeasure.INDEX:
+                return _slice(
+                    int(self.start_mass),
+                    int(self.end_mass if self.end_mass is not None else None),
+                    len(mass_axis),
+                )

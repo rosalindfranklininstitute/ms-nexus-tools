@@ -14,6 +14,7 @@ from .chunking import count_chunks_to_cover
 
 class NxsQuerySource(AbstractQuerySource):
     def __init__(self, in_path: Path, tqdm=tqdm):
+        super().__init__(name="RFI-MSI-NeXus")
         self.nx_file = NexusFile(in_path, mode="r")
 
         self._shape = self.nx_file.root.spectra.data.signal.shape

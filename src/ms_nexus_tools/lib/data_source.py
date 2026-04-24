@@ -16,6 +16,9 @@ class UnsupportedDataError(RuntimeError):
 
 
 class AbstractQuerySource(AbstractContextManager):
+    def __init__(self, name: str):
+        self.name = name
+
     @abstractmethod
     def shape(self) -> Shape:
         pass

@@ -1,4 +1,3 @@
-from ms_nexus_tools.lib.bounds import Chunk
 from typing import Any
 
 from dataclasses import dataclass
@@ -30,13 +29,14 @@ from .mass_range_args import (
     plot_mass_ranges,
     accumulate_mass_ranges,
 )
-from ..lib.data_source import AbstractQuerySource
-from ..lib.chunking import Chunker, count_chunks_to_cover
+from ..lib.data_source import AbstractQuerySource, UnsupportedDataError
+from ..lib.bounds import Chunk
+from ..lib.chunking import count_chunks_to_cover
 from ..lib.filter import MassRangeTotalImage, Accumulator
 from ..lib.image import OriginLocation, adjust_origin
 from ..lib.nxs import NexusFile
 from ..lib.utils import slice_len, count_digits
-from ..lib.normalisation import Norm, norm, normalise
+from ..lib.normalisation import Norm, normalise
 from . import (
     image_plot as nxtic,
     spectrum_plot as nxts,
@@ -157,15 +157,17 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
 
     assert args.in_path.exists(), f"The input file {args.in_path} was not found"
 
-    nx_file = NexusFile(args.in_path, mode="r")
-
     if args.plot_total_image or args.accumulate_masses:
-        tic_config = nxtic.PlotKwArgs.read_config(config, "total_ion_count")
+        tic_config = nxtic.PlotKwArgs.read_config(config, "total_image")
     if args.plot_total_spectrum:
         ts_config = nxts.PlotKwArgs.read_config(config, "total_spectra")
+    else:
+        ts_config = nxts.PlotKwArgs()
+
     if args.plot_kdm:
         kdm_config = nxkdm.PlotKwArgs.read_config(config, "kendrick_mass_defect")
-    isp_config = nxisp.PlotKwArgs.read_config(config, "calibration_plot")
+
+    isp_config = nxisp.PlotKwArgs.from_image_and_spectra_args(tic_config, ts_config)
 
     with args.query_source as nx:
         shape = nx.shape()
@@ -213,7 +215,6 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
             nx.fill_filters(ll, bins, xy, mass_images, inner_chunk)
 
             title = f"{args.in_path.stem}"
-            norm_title = f"({args.accumulator.value}/{args.scaling.value})"
 
             plot_mass_ranges(
                 mass_values,
@@ -249,66 +250,77 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                         "Requested an accumulated image, but there was no data for the masses specified."
                     )
 
-            def total_spectra():
-                spectra = nx.accumulated_spectrum(args.accumulator, ll)
-                return normalise(spectra, args.scaling)
+            try:
 
-            def total_images():
-                image = nx.accumulated_image(args.accumulator, ll)
-                if abs(args.subpixels - 1.0) < 1e-2:
-                    return adjust_origin(normalise(image, args.scaling), args.origin)
-                else:
-                    return scipy.ndimage.zoom(
-                        adjust_origin(normalise(image, args.scaling), args.origin),
-                        zoom=args.subpixels,
-                        order=args.interpolation_order,
-                        mode="constant",
-                        cval=0.0,
-                    )
+                def total_spectra():
+                    spectra = nx.accumulated_spectrum(args.accumulator, ll)
+                    return normalise(spectra, args.scaling)
 
-            filename = f"{title}.layer_{ll + 1:0{layer_digits}}.{args.accumulator.value}_{args.scaling.value}"
+                def total_images():
+                    image = nx.accumulated_image(args.accumulator, ll)
+                    if abs(args.subpixels - 1.0) < 1e-2:
+                        return adjust_origin(
+                            normalise(image, args.scaling), args.origin
+                        )
+                    else:
+                        return scipy.ndimage.zoom(
+                            adjust_origin(normalise(image, args.scaling), args.origin),
+                            zoom=args.subpixels,
+                            order=args.interpolation_order,
+                            mode="constant",
+                            cval=0.0,
+                        )
 
-            if args.write_txt:
-                np.savetxt(
-                    args.out_dir / f"{filename}.image.txt",
-                    total_images(),
+                filename = f"{title}.layer_{ll + 1:0{layer_digits}}.{args.accumulator.value}_{args.scaling.value}"
+                norm_title = (
+                    f"Layer: {ll + 1} ({args.accumulator.value}/{args.scaling.value})"
                 )
 
-                total_spectra_data = np.array([mass_values, total_spectra()]).T
-
-                np.savetxt(
-                    args.out_dir / f"{filename}.spectrum.txt", total_spectra_data
-                )
-
-            if args.plot_total_image:
-                nxtic.process(
-                    nxtic.ProcessArgs(
-                        f"{title}: Total Image: {norm_title}",
+                if args.write_txt:
+                    np.savetxt(
+                        args.out_dir / f"{filename}.image.txt",
                         total_images(),
-                        args.out_dir / f"{filename}.image.png",
-                        plot_args=tic_config,
                     )
-                )
 
-            if args.plot_total_spectrum:
-                nxts.process(
-                    nxts.ProcessArgs(
-                        f"{title}: Total Spectrum: {norm_title}",
-                        mass_values,
-                        total_spectra(),
-                        args.out_dir / f"{filename}.spectrum.png",
-                        plot_args=ts_config,
-                    )
-                )
+                    total_spectra_data = np.array([mass_values, total_spectra()]).T
 
-            if args.plot_kdm:
-                nxkdm.process(
-                    nxkdm.ProcessArgs(
-                        f"{title}: Total KDM: {norm_title}",
-                        mass_values,
-                        total_spectra(),
-                        args.out_dir / f"{filename}.kdm.png",
-                        normalisation=nxkdm.Normalisation.QUADRATIC,
-                        plot_args=kdm_config,
+                    np.savetxt(
+                        args.out_dir / f"{filename}.spectrum.txt", total_spectra_data
                     )
+
+                if args.plot_total_image:
+                    nxtic.process(
+                        nxtic.ProcessArgs(
+                            f"{title}: {norm_title}",
+                            total_images(),
+                            args.out_dir / f"{filename}.image.png",
+                            plot_args=tic_config,
+                        )
+                    )
+
+                if args.plot_total_spectrum:
+                    nxts.process(
+                        nxts.ProcessArgs(
+                            f"{title}: {norm_title}",
+                            mass_values,
+                            total_spectra(),
+                            args.out_dir / f"{filename}.spectrum.png",
+                            plot_args=ts_config,
+                        )
+                    )
+
+                if args.plot_kdm:
+                    nxkdm.process(
+                        nxkdm.ProcessArgs(
+                            f"{title}: {norm_title}",
+                            mass_values,
+                            total_spectra(),
+                            args.out_dir / f"{filename}.kdm.png",
+                            normalisation=nxkdm.Normalisation.QUADRATIC,
+                            plot_args=kdm_config,
+                        )
+                    )
+            except UnsupportedDataError:
+                logger.warning(
+                    f"{args.query_source.name} does not support {args.accumulator.value} data for the total image or spectra"
                 )

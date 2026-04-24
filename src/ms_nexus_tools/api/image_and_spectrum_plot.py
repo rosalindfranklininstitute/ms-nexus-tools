@@ -1,4 +1,4 @@
-from typing import Any, NamedTuple
+from typing import Any
 from dataclasses import dataclass, field
 import tomllib
 from pathlib import Path
@@ -7,12 +7,11 @@ from bisect import bisect_left, bisect_right
 import numpy as np
 import matplotlib.pyplot as plt
 
+from ..lib.plot_utils import AxCommand
+
 from . import compound
-
-
-class AxCommand(NamedTuple):
-    command: str
-    kwargs: dict[str, Any]
+from . import image_plot
+from . import spectrum_plot
 
 
 @dataclass
@@ -47,6 +46,21 @@ class PlotKwArgs:
                 kwargs.savefig_kw_args = sub_config["savefig"]
         return kwargs
 
+    @staticmethod
+    def from_image_and_spectra_args(
+        image_plot_args: image_plot.PlotKwArgs,
+        spectrum_plot_args: spectrum_plot.PlotKwArgs,
+    ):
+        return PlotKwArgs(
+            plot_kw_args=spectrum_plot_args.plot_kw_args,
+            plot_axes_commands_and_kw_args=spectrum_plot_args.axes_commands_and_kw_args,
+            imshow_kw_args=image_plot_args.imshow_kw_args,
+            imshow_axes_commands_and_kw_args=image_plot_args.axes_commands_and_kw_args,
+            colorbar_kw_args=image_plot_args.colorbar_kw_args,
+            savefig_kw_args=spectrum_plot_args.savefig_kw_args
+            | image_plot_args.savefig_kw_args,
+        )
+
 
 @dataclass
 class ProcessArgs:
@@ -62,22 +76,34 @@ class ProcessArgs:
 
 def process(args: ProcessArgs) -> None:
 
-    fig, axs = plt.subplots(ncols=2)
+    fig, axs = plt.subplots(ncols=2, figsize=(16, 8))
 
     if args.title is not None:
         fig.suptitle(args.title)
 
+    axs[1].set_title("Mass spectrum")
     axs[1].plot(args.mass, args.spectra, **args.plot_args.plot_kw_args)
+    axs[1].set_xlabel("m/z")
 
     for command in args.plot_args.plot_axes_commands_and_kw_args:
         axs[1].__getattribute__(command.command)(**command.kwargs)
 
+    axs[0].set_title("Mass image")
     im = axs[0].imshow(args.image, **args.plot_args.imshow_kw_args)
 
     for command in args.plot_args.imshow_axes_commands_and_kw_args:
         axs[0].__getattribute__(command.command)(**command.kwargs)
 
-    fig.colorbar(im, ax=axs[0], location="bottom", **args.plot_args.colorbar_kw_args)
+    im_min = np.min(args.image)
+    im_max = np.max(args.image)
+    fig.colorbar(
+        im,
+        ax=axs[0],
+        location="right",
+        shrink=0.8,
+        ticks=np.linspace(im_min, im_max, 6),
+        **args.plot_args.colorbar_kw_args,
+    )
 
     fig.savefig(args.target_file_name, **args.plot_args.savefig_kw_args)
     plt.close(fig)

@@ -64,6 +64,13 @@ class GenericAxis(list[list[Axis]]):
             ax.add_to_group(group)
 
 
+class FieldOptions(NamedTuple):
+    compression: str
+    compression_opts: int
+    max_items_per_chunk: int
+    shuffle: bool
+
+
 class NexusFile:
     def __init__(self, filename: Path, mode: str = "r"):
         self.filename = filename
@@ -162,7 +169,7 @@ def create_field(
 def create_chunked_subentry(
     nxs: NexusFile,
     name: str,
-    max_items_per_chunk: int,
+    field_options: FieldOptions,
     memory_shape: Shape,
     data_shape: Shape,
     priorities: Shape,
@@ -172,18 +179,19 @@ def create_chunked_subentry(
     assert len(data_shape) == len(axes)
 
     chunks = Chunker.from_max_item_count(
-        data_shape=memory_shape,
+        data_shape=data_shape,
         priorities=priorities,
-        items_per_chunk=max_items_per_chunk,
+        items_per_chunk=field_options.max_items_per_chunk,
     )
     subentry = nxs.create_subentry(
         name,
         create_field(
             dtype="int32",
             shape=data_shape,
-            compression="gzip",
-            compression_opts=4,
+            compression=field_options.compression,
+            compression_opts=field_options.compression_opts,
             chunks=chunks.chunk_shape,
+            shuffle=field_options.shuffle,
         ),
         axes=axes,
     )
@@ -269,8 +277,10 @@ def create_standard_file(
     out_chunk: Chunk,
     out_path: Path,
     axes: GenericAxis | None = None,
-    max_items_per_chunk: int = 46000,
-):
+    field_options=FieldOptions(
+        compression="gzip", compression_opts=4, max_items_per_chunk=46000, shuffle=False
+    ),
+) -> tuple[NexusFile, ContainedBounds, tuple[Chunker, ...]]:
     cbounds = ContainedBounds.from_chunk(outer_shape=data_shape, inner_chunk=out_chunk)
 
     if axes is None:
@@ -326,7 +336,7 @@ def create_standard_file(
     spectra_chunks, spectra = create_chunked_subentry(
         nxs,
         "spectra",
-        max_items_per_chunk=max_items_per_chunk,
+        field_options=field_options,
         memory_shape=cbounds.outer_shape,
         data_shape=cbounds.inner_shape,
         priorities=(3, 2, 2, 1),
@@ -336,7 +346,7 @@ def create_standard_file(
     total_spectra_chunks, total_spectra = create_chunked_subentry(
         nxs,
         "total_spectra",
-        max_items_per_chunk=max_items_per_chunk,
+        field_options=field_options,
         memory_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
         data_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
         priorities=(3, 2, 1),
@@ -346,7 +356,7 @@ def create_standard_file(
     image_chunks, images = create_chunked_subentry(
         nxs,
         "images",
-        max_items_per_chunk=max_items_per_chunk,
+        field_options=field_options,
         memory_shape=cbounds.outer_shape,
         data_shape=cbounds.inner_shape,
         priorities=(3, 1, 1, 2),
@@ -356,7 +366,7 @@ def create_standard_file(
     total_image_chunks, total_images = create_chunked_subentry(
         nxs,
         "total_images",
-        max_items_per_chunk=max_items_per_chunk,
+        field_options=field_options,
         memory_shape=(
             acc_count,
             cbounds.inner_shape[0],

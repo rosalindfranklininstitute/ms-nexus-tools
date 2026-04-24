@@ -6,11 +6,13 @@ from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
 
+from ..lib.plot_utils import AxCommand
+
 
 @dataclass
 class PlotKwArgs:
     imshow_kw_args: dict[str, Any] = field(default_factory=dict)
-    axes_commands_and_kw_args: dict[str, dict[str, Any]] = field(default_factory=dict)
+    axes_commands_and_kw_args: list[AxCommand] = field(default_factory=dict)
     colorbar_kw_args: dict[str, Any] = field(default_factory=dict)
     savefig_kw_args: dict[str, Any] = field(default_factory=dict)
 
@@ -38,7 +40,7 @@ class PlotKwArgs:
 class ProcessArgs:
     title: str | None
 
-    total_ion_count: np.ndarray
+    image: np.ndarray
     target_file_name: Path
 
     plot_args: PlotKwArgs
@@ -50,12 +52,23 @@ def process(args: ProcessArgs) -> None:
     if args.title is not None:
         fig.suptitle(args.title)
 
-    im = ax.imshow(args.total_ion_count, **args.plot_args.imshow_kw_args)
+    ax.set_title("Mass image")
 
-    for command, kwargs in args.plot_args.axes_commands_and_kw_args.items():
-        ax.__getattribute__(command)(**kwargs)
+    im = ax.imshow(args.image, **args.plot_args.imshow_kw_args)
 
-    fig.colorbar(im, ax=ax, **args.plot_args.colorbar_kw_args)
+    for command in args.plot_args.axes_commands_and_kw_args:
+        ax.__getattribute__(command.command)(**command.kwargs)
+
+    im_min = np.min(args.image)
+    im_max = np.max(args.image)
+    fig.colorbar(
+        im,
+        ax=ax,
+        location="right",
+        shrink=0.8,
+        ticks=np.linspace(im_min, im_max, 6),
+        **args.plot_args.colorbar_kw_args,
+    )
 
     fig.savefig(args.target_file_name, **args.plot_args.savefig_kw_args)
     plt.close(fig)
