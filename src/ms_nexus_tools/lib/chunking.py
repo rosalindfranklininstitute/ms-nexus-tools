@@ -1,6 +1,7 @@
 from typing import Generator, NamedTuple
 from dataclasses import dataclass, field
 import math
+import itertools
 
 import numpy as np
 
@@ -334,6 +335,19 @@ class Chunker:
             yield Chunk([self._chunk(ii, indices[ii]) for ii in range(self.n_dims)])
         return
 
+    def bulk_chunks(self) -> list[Chunk]:
+        dims = len(self.data_shape)
+
+        dim_chunks = []
+        for ii in range(dims):
+            chunk = self._chunk(ii, self.chunk_count[ii] - 1)
+            if self.data_shape[ii] > 1:
+                dim_chunks.append([slice(0, chunk.start), chunk])
+            else:
+                dim_chunks.append([slice(0, 1)])
+
+        return [i for i in itertools.product(*dim_chunks)]
+
     def chunk_for_position(self, position: tuple[int, ...]) -> Chunk:
         return Chunk(
             [
@@ -341,6 +355,9 @@ class Chunker:
                 for ii, p in enumerate(position)
             ]
         )
+
+    def chunk_for_index(self, index: tuple[int, ...]) -> Chunk:
+        return Chunk([self._chunk(ii, jj) for ii, jj in enumerate(index)])
 
 
 @dataclass

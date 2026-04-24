@@ -149,7 +149,7 @@ def test_chunks():
     flags = np.zeros(chunker.data_shape)
     assert np.sum(flags) == 0
     for chunk in chunks:
-        flags[*chunk] = 1
+        flags[*chunk] += 1
     assert np.sum(flags) == np.prod(chunker.data_shape)
 
     chunker = Chunker.from_min_chunks(
@@ -165,7 +165,44 @@ def test_chunks():
     flags = np.zeros(chunker.data_shape)
     assert np.sum(flags) == 0
     for chunk in chunks:
-        flags[*chunk] = 1
+        flags[*chunk] += 1
+    assert np.sum(flags) == np.prod(chunker.data_shape)
+
+
+def test_bulk_chunks():
+
+    chunker = Chunker.from_min_item_count(
+        data_shape=(10, 10, 10), priorities=(1, 1, 1), items_per_chunk=10
+    )
+
+    assert chunker.chunk_shape == (3, 3, 3)
+    assert chunker.chunk_count == (4, 4, 4)
+
+    chunks = chunker.bulk_chunks()
+    assert len(chunks) == 2 ** len(chunker.data_shape)
+
+    flags = np.zeros(chunker.data_shape)
+    assert np.sum(flags) == 0
+    for chunk in chunks:
+        flags[*chunk] += 1
+    assert (flags == 1).all()
+    assert np.sum(flags) == np.prod(chunker.data_shape)
+
+    chunker = Chunker.from_min_item_count(
+        data_shape=(1, 10, 10), priorities=(1, 1, 1), items_per_chunk=10
+    )
+
+    assert chunker.chunk_shape == (1, 5, 5)
+    assert chunker.chunk_count == (1, 2, 2)
+
+    chunks = chunker.bulk_chunks()
+    assert len(chunks) == 2 ** (len(chunker.data_shape) - 1)
+
+    flags = np.zeros(chunker.data_shape)
+    assert np.sum(flags) == 0
+    for chunk in chunks:
+        flags[*chunk] += 1
+    assert (flags == 1).all()
     assert np.sum(flags) == np.prod(chunker.data_shape)
 
 
