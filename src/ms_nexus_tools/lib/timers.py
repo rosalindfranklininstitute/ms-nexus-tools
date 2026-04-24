@@ -112,6 +112,10 @@ class Timer(AbstractContextManager):
         self._print()
 
 
+class JSONTimerSkip(Exception):
+    pass
+
+
 class JSONTimer(AbstractContextManager):
     def __init__(self, filename: Path, keys: Iterable[str]):
         self.filename = filename
@@ -121,17 +125,22 @@ class JSONTimer(AbstractContextManager):
         self._data: dict[str, Any] = {}
 
     def __enter__(self):
+
         self._start = time.monotonic()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+
+        if exc_type is JSONTimerSkip:
+            return True
+
         end = time.monotonic()
         duration = end - self._start
-        timings = {}
+        old_data = {}
         if self.filename.exists():
             with open(self.filename, "r") as fd:
-                timings = json.load(fd)
-        new_data = timings
+                old_data = json.load(fd)
+        new_data = old_data
         for key in self.keys:
             if key not in new_data:
                 new_data[key] = {}
@@ -139,7 +148,24 @@ class JSONTimer(AbstractContextManager):
         new_data["duration"] = duration
         new_data.update(self._data)
         with open(self.filename, "w") as fd:
-            json.dump(timings, fd, indent=2)
+            json.dump(old_data, fd, indent=2)
+
+        return False
+
+    def skip_if_present(self):
+        if self.filename.exists():
+            with open(self.filename, "r") as fd:
+                old_data = json.load(fd)
+        skip = True
+        new_data = old_data
+        for key in self.keys:
+            if key not in new_data:
+                skip = False
+                break
+            new_data = new_data[key]
+        skip = skip and "duration" in new_data
+        if skip:
+            raise JSONTimerSkip()
 
     def add_user_data(self, /, **kwargs):
         self._data.update(kwargs)

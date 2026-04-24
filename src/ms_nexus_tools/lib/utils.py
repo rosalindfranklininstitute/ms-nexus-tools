@@ -1,4 +1,5 @@
 from typing import Iterator, Any, Iterable
+import json
 
 
 def count_digits(num: int) -> int:
@@ -59,3 +60,22 @@ class NotTqdm:
 
     def update(self):
         pass
+
+
+def json_add(filename, *keys, value):
+    old_data = {}
+    if filename.exists():
+        with open(filename, "r") as fd:
+            old_data = json.load(fd)
+    if len(keys) >= 1:
+        new_data = old_data
+        for key in keys[:-1]:
+            if key not in new_data:
+                new_data[key] = {}
+            new_data = new_data[key]
+        new_data[keys[-1]] = value
+    else:
+        assert isinstance(value, dict)
+        old_data.update(value)
+    with open(filename, "w") as fd:
+        json.dump(old_data, fd, indent=2)
