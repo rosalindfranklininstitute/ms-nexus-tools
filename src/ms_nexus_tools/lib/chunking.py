@@ -346,7 +346,7 @@ class Chunker:
             else:
                 dim_chunks.append([slice(0, 1)])
 
-        return [i for i in itertools.product(*dim_chunks)]
+        return [Chunk(i) for i in itertools.product(*dim_chunks)]
 
     def chunk_for_position(self, position: tuple[int, ...]) -> Chunk:
         return Chunk(

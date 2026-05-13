@@ -25,8 +25,38 @@ class Axis:
     field: NXfield
 
     @staticmethod
-    def create(values, name: str, indices: list[int], unit: str | None = None):
-        field = NXfield(values, name=name)
+    def create(
+        values,
+        name: str,
+        indices: list[int],
+        unit: str | None = None,
+        chunk_shape: Shape | None = None,
+    ):
+        field = NXfield(values, name=name, chunks=chunk_shape)
+        if unit is not None:
+            field.attrs["unit"] = unit
+
+        return Axis(name=name, indices=indices, field=field)
+
+    @staticmethod
+    def create_empty(
+        name: str,
+        indices: list[int],
+        dtype: type,
+        shape: Shape,
+        compression: str | None = None,
+        compression_opts: Any = None,
+        chunks: Shape | None = None,
+        unit: str | None = None,
+    ):
+        field = NXfield(
+            name=name,
+            dtype=dtype,
+            shape=shape,
+            compression=compression,
+            compression_opts=compression_opts,
+            chunks=chunks,
+        )
         if unit is not None:
             field.attrs["unit"] = unit
 
@@ -72,11 +102,11 @@ class FieldOptions(NamedTuple):
 
 
 class NexusFile:
-    def __init__(self, filename: Path, mode: str = "r"):
+    def __init__(self, filename: Path, mode: str = "r", locking=None):
         self.filename = filename
 
         self._mode = mode
-        self._file = nxload(filename, mode)
+        self._file = nxload(filename, mode, locking=locking)
 
         if mode == "w" or mode == "w-" or mode == "x":
             self._file["entry"] = NXentry()
