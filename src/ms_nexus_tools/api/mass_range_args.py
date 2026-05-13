@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Duncan McDougall <duncan.mcdougall@rfi.ac.uk>
+#
+# SPDX-License-Identifier: Apache-2.0
+
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 from pathlib import Path

@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Duncan McDougall <duncan.mcdougall@rfi.ac.uk>
+#
+# SPDX-License-Identifier: Apache-2.0
+
 import math
 
 from hypothesis import given, strategies as st
