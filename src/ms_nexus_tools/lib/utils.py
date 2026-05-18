@@ -4,10 +4,13 @@
 
 import math
 from typing import Iterator, Any, Iterable
+from bisect import bisect_right, bisect_left
 import json
 
+from .dtypes import Number1D, Number
 
-def format_bytes(n: int, digits: int = 2) -> str:
+
+def format_bytes(n: Number, digits: int = 2) -> str:
     """
     Format the given number of bytes into byte units.
     >>> format_bytes(10)
@@ -155,6 +158,12 @@ def slice_range(slc: slice) -> range:
         return range(0, slc.stop, slc.step)
     else:
         return range(slc.start, slc.stop, slc.step)
+
+
+def slice_from_values(start: Number, stop: Number, values: Number1D) -> slice:
+    start_index = bisect_left(values, start)
+    stop_index = bisect_right(values, stop)
+    return slice(start_index, stop_index)
 
 
 class NotTqdm:

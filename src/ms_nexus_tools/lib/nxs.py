@@ -99,8 +99,8 @@ class GenericAxis(list[list[Axis]]):
 
 
 class FieldOptions(NamedTuple):
-    compression: str
-    compression_opts: int
+    compression: Any
+    compression_opts: int | None
     max_items_per_chunk: int
     shuffle: bool
 

@@ -364,98 +364,64 @@ class Chunker:
         return Chunk([self._chunk(ii, jj) for ii, jj in enumerate(index)])
 
 
-@dataclass
-class ChunkBounds:
-    layer: slice
-    width: slice
-    height: slice
-    spectra: slice
+def find_chunk_multiple(data_shape, chunk_shape, max_item_count) -> Chunker:
+    """
+    Do the things at the place:
+    >>> find_chunk_multiple((100,100,100), (10,10,10), 2000).chunk_shape
+    (10, 10, 20)
 
-    def __hash__(self):
-        return hash(
-            (
-                self.layer.start,
-                self.layer.stop,
-                self.width.start,
-                self.width.stop,
-                self.height.start,
-                self.height.stop,
-                self.spectra.start,
-                self.spectra.stop,
-            )
+    >>> find_chunk_multiple((100,100,100), (10,10,10), 3000).chunk_shape
+    (10, 10, 30)
+
+    >>> find_chunk_multiple((100,100,100), (10,10,10), 3500).chunk_shape
+    (10, 10, 30)
+
+    >>> find_chunk_multiple((100,100,100), (10,10,10), 4000).chunk_shape
+    (10, 20, 20)
+
+    >>> find_chunk_multiple((100,100,100), (25,10,4), 3000).chunk_shape
+    (25, 10, 12)
+
+    >>> find_chunk_multiple((100,100,100), (25,10,4), 4000).chunk_shape
+    (25, 20, 8)
+    """
+
+    chunked_data_shape = tuple(
+        int(math.floor(d // c)) for d, c in zip(data_shape, chunk_shape)
+    )
+    items_per_chunk = int(np.prod(chunk_shape))
+    if max_item_count < items_per_chunk:
+        raise ValueError(
+            f"The Maximum item count ({max_item_count}) must be greater than the number of the items in a chunk ({items_per_chunk})"
         )
+    max_item_count = max_item_count // items_per_chunk
 
-    def approximate_size_gb(self) -> float:
-        return approximate_gb(
-            float(self.layer.stop - self.layer.start)
-            * float(self.width.stop - self.width.start)
-            * float(self.height.stop - self.height.start)
-            * float(self.spectra.stop - self.spectra.start)
+    priorities = [ii for ii in range(len(data_shape), 0, -1)]
+
+    final_item_count = 0
+    final_chunker = None
+
+    for ii in range(0, len(data_shape)):
+        current_priorities = [
+            priorities[jj] if -jj > -ii else 1 for jj in range(0, len(data_shape))
+        ]
+
+        chunker = Chunker.from_max_item_count(
+            chunked_data_shape, current_priorities, max_item_count
         )
-
-    def layer_count(self) -> int:
-        return self.layer.stop - self.layer.start
-
-    def layer_width(self) -> int:
-        return self.width.stop - self.width.start
-
-    def layer_height(self) -> int:
-        return self.height.stop - self.height.start
-
-    def spectrum_length(self) -> int:
-        return self.spectra.stop - self.spectra.start
-
-    def layer_range(self) -> range:
-        return range(self.layer.start, self.layer.stop)
-
-    def width_range(self) -> range:
-        return range(self.width.start, self.width.stop)
-
-    def height_range(self) -> range:
-        return range(self.height.start, self.height.stop)
-
-    def spectra_range(self) -> range:
-        return range(self.spectra.start, self.spectra.stop)
-
-    def to_bound_dict(self) -> dict[str, int]:
-        return dict(
-            layer_start=self.layer.start,
-            layer_stop=self.layer.stop,
-            width_stat=self.width.start,
-            width_stop=self.width.stop,
-            height_stat=self.height.start,
-            height_stop=self.height.stop,
-            spectra_stat=self.spectra.start,
-            spectra_stop=self.spectra.stop,
+        memory_chunk_shape = tuple(
+            c * cs for c, cs in zip(chunk_shape, chunker.chunk_shape)
         )
+        memory_item_count = np.prod(memory_chunk_shape)
 
-    def shape(self) -> tuple[int, int, int, int]:
-        return (
-            self.layer.stop - self.layer.start,
-            self.width.stop - self.width.start,
-            self.height.stop - self.height.start,
-            self.spectra.stop - self.spectra.start,
-        )
+        if chunker is None or memory_item_count > final_item_count:
+            final_item_count = memory_item_count
+            final_chunker = chunker
 
-    def count(self) -> int:
-        return int(np.prod(self.shape()))
-
-
-@dataclass
-class ImageBounds:
-    layer_count: int
-    layer_width: int
-    layer_height: int
-    spectrum_length: int
-    shape: tuple[int, int, int, int] = field(init=False)
-
-    def __post_init__(self):
-        self.shape = (
-            self.layer_count,
-            self.layer_width,
-            self.layer_height,
-            self.spectrum_length,
-        )
-
-    def to_bounds(self) -> Bounds:
-        return Bounds(self.shape)
+    assert final_chunker is not None
+    return Chunker.from_chunk_shape(
+        data_shape=data_shape,
+        chunk_shape=tuple(
+            c * cs for c, cs in zip(chunk_shape, final_chunker.chunk_shape)
+        ),
+    )
