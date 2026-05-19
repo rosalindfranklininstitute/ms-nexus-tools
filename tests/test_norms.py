@@ -36,14 +36,11 @@ def test_norms_shape():
     assert norms["z"].max.shape == (2, 3)
     assert norms["xy"].max.shape == (4,)
     assert norms["yz"].max.shape == (2,)
-    assert norms["xyz"].max.shape == ()
+    assert norms["xyz"].max.shape == (1,)
 
-    for n in norms.values():
-        assert n.max is not None
-        if n.max.shape == ():
-            assert n.max == 2.0
-        else:
-            assert (n.max == np.ones(n.max.shape) * 2).all()
+    for k, n in norms.items():
+        assert (n.min == np.ones(n.max.shape)).all()
+        assert (n.max == np.ones(n.max.shape) * 2).all()
 
     assert (norms["x"].tic == 3 * 2).all()
     assert (norms["y"].tic == 3 * 3).all()
@@ -62,4 +59,5 @@ def test_norms_values():
         norm.add(r)
 
     assert norm.max == np.max(random_values)
+    assert norm.min == np.min(random_values)
     assert norm.tic == np.sum(random_values)

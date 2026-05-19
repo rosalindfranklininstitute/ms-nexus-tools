@@ -7,6 +7,9 @@ from typing import Iterator, Any, Iterable
 from bisect import bisect_right, bisect_left
 import json
 
+import numpy as np
+
+from .bounds import Shape
 from .dtypes import Number1D, Number
 
 
@@ -107,12 +110,18 @@ def count_digits(num: int) -> int:
     >>count_digits(10), count_digits(12)
     (2, 2)
 
+    >>count_digits(100), count_digits(314)
+    (3, 3)
+
+    >>count_digits(-100), count_digits(-10)
+    (3, 2)
+
     >>> count_digits(0)
     1
     """
     digits = 1
     num = abs(num) // 10
-    while abs(num) > 0:
+    while num > 0:
         digits += 1
         num = num // 10
     return digits
@@ -203,3 +212,48 @@ def json_add(filename, *keys, value):
         old_data.update(value)
     with open(filename, "w") as fd:
         json.dump(old_data, fd, indent=2)
+
+
+def indices(shape: Shape, axis=None) -> Iterator[tuple[slice | int, ...]]:
+    if axis is None:
+        yield (slice(None) for ii in range(len(shape)))
+    else:
+        if isinstance(axis, int):
+            axis = [axis]
+        axis = np.sort(axis)
+        iterable_shape = [shape[ii] for ii in axis]
+        ndims = len(shape)
+        slices = np.array([0 if ii in axis else slice(None) for ii in range(ndims)])
+        for values in np.ndindex(*iterable_shape):
+            slices[axis] = values
+            yield tuple(slices)
+
+
+def iterate(array: np.ndarray, axis=None) -> Iterator[np.ndarray]:
+    for slc in indices(array.shape, axis):
+        yield array[*slc]
+
+
+def reduce_shape(shape: Shape, axis=None) -> Shape:
+    """
+    Returns the data shape for the given axis.
+    >>> reduce_shape((1,2,3))
+    (1, 2, 3)
+
+    >>> reduce_shape((1,2,3), axis=-1)
+    (1, 2)
+
+    >>> reduce_shape((1,2,3), axis=0)
+    (2, 3)
+
+    >>> reduce_shape((1,2,3), axis=(0, -1))
+    (2,)
+    """
+    if axis is None:
+        return shape
+    else:
+        if isinstance(axis, int):
+            axis = [axis]
+        ndim = len(shape)
+        axis = np.sort([a if a >= 0 else a + ndim for a in axis])
+        return Shape(v for ii, v in enumerate(shape) if ii not in axis)
