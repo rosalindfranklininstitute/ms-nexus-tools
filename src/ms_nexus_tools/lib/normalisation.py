@@ -70,6 +70,18 @@ def _operate(operation, current, new, axis):
 
 
 class P2Histogram:
+    """
+    This calculates an approximate histogram with b equally probable cells.
+    This is an approximation based on a parabolic interpolation.
+    i.e. it approaches the true percentiles as the number of samples increases.
+    This is a vectorised implementation of the histogram described by
+
+    Jain, Raj, and Imrich Chlamtac.
+    'The P2 Algorithm for Dynamic Calculation of Quantiles and Histograms without Storing Observations'.
+    Communications of the ACM 28, no. 10 (1985): 1076–85.
+    https://doi.org/10.1145/4372.4378.
+    """
+
     def __init__(self, b: int, shape: Shape = (1,)):
         self.b = b
         self.shape = (1,) if shape == tuple() else shape
