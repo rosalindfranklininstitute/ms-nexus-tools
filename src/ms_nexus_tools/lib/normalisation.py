@@ -4,9 +4,10 @@
 
 from enum import Enum
 import numpy as np
+from scipy.interpolate import PchipInterpolator
 
 from .bounds import Shape
-from .utils import reduce_shape, iterate
+from .utils import reduce_shape, iterate, indices
 
 
 class Norm(Enum):
@@ -91,8 +92,10 @@ class P2Histogram:
 
         self.ii = 0
 
+        self._k = np.arange(0, self.b + 1)
+
     @property
-    def heights(self):
+    def heights(self) -> np.ndarray:
         if self.ii == 0:
             return np.full(self._heights.shape, np.nan)
         if self.ii <= self.b:
@@ -107,7 +110,7 @@ class P2Histogram:
             )
         return self._heights
 
-    def heights_for(self, percentile_inx):
+    def heights_for(self, percentile_inx) -> np.ndarray:
         return self.heights[*self.selectors, percentile_inx]
 
     def add(self, x):
@@ -144,102 +147,90 @@ class P2Histogram:
             max_value = x > self._heights[*self.selectors, -1]
             self._heights[max_value, -1] = x[max_value]
 
-            for k in range(self.b, 0, -1):
-                mask = x < self._heights[*self.selectors, k]
-                self.positions[mask, k] += 1
+            mask = x[*self.selectors, None] < self._heights[*self.selectors, self._k]
 
+            self.positions[mask] += 1
+
+            self.positions[*self.selectors, 0] = 0
             self.positions[*self.selectors, -1] = self.ii
 
-            desired_positions = np.tile(
-                np.arange(self.b + 1) * self.ii / self.b, self.shape
-            ).reshape((*self.shape, self.b + 1))
+            desired_positions = np.arange(self.b + 1) * self.ii / self.b
             d = (desired_positions - self.positions)[*self.selectors, 1:-1]
+            d_minus = d <= -1
+            d_plus = d >= 1
 
-            n_minus = np.diff(self.positions, axis=-1)[*self.selectors, :-1]
-            n_plus = np.diff(self.positions, axis=-1)[*self.selectors, 1:]
+            spaces = np.diff(self.positions, axis=-1)
+            n_minus = spaces[*self.selectors, :-1]
+            n_plus = spaces[*self.selectors, 1:]
 
-            d_mask = ((n_plus > 1) * (d >= 1)) + ((n_minus > 1) * (d <= -1))
+            d_mask = ((n_plus > 1) * (d_plus)) + ((n_minus > 1) * (d_minus))
+            d_minus *= d_mask
+            d_plus *= d_mask
 
             if np.any(d_mask):
-                d[d < 0] = -1
-                d[d > 0] = 1
-
-                new_q, mask = P2Histogram._interpolate(
+                d[d_minus] = -1
+                d[d_plus] = 1
+                new_q = P2Histogram._interpolate(
                     n_minus,
                     n_plus,
                     self.selectors,
                     self._heights,
                     d,
                     d_mask,
+                    d_minus,
+                    d_plus,
                 )
 
-                self._heights[mask] = new_q[mask]
-
-                padded_d_mask = np.pad(
-                    d_mask,
-                    pad_width=padding_shape,
-                    constant_values=np.full((len(padding_shape), 2), False),
-                )
-                self.positions[padded_d_mask] += d[d_mask]
+                mask = np.full(self._heights.shape, False)
+                mask[*self.selectors, 1:-1] = d_mask
+                self._heights[mask] = new_q[d_mask]
+                self.positions[mask] += d[d_mask]
         self.ii += 1
 
     @staticmethod
     def _parabola(q_minus, q, q_plus, d, n_minus, n_plus):
-        return q + d / (n_plus + n_minus) * (
-            (n_minus + d) * (q_plus) / (n_plus) + (n_plus - d) * (q_minus) / (n_minus)
+        return q + (
+            d
+            / (n_plus + n_minus)
+            * (
+                (n_minus + d) * (q_plus) / (n_plus)
+                + (n_plus - d) * (q_minus) / (n_minus)
+            )
         )
 
     @staticmethod
-    def _linear(q_minus, q, q_plus, d, n_minus, n_plus):
-        negative = d < 0
-        neutral = d == 0
-        positive = d > 0
+    def _linear(q_minus, q, q_plus, d_minus, d_plus, n_minus, n_plus):
         result = np.zeros(q.shape)
-        result[negative] = q[negative] - (q_minus[negative]) / (n_minus[negative])
-        result[positive] = q[positive] + (q_plus[positive]) / (n_plus[positive])
-        result[neutral] = q[neutral]
+        result[d_minus] = q[d_minus] - (q_minus[d_minus]) / (n_minus[d_minus])
+        result[d_plus] = q[d_plus] + (q_plus[d_plus]) / (n_plus[d_plus])
         return result
 
     @staticmethod
-    def _interpolate(n_minus, n_plus, selectors, q, d, d_mask):
-        padding = np.full(q.shape, False)
-        mask = np.full(q.shape, False)
-        new_q = q[*selectors, :]
+    def _interpolate(n_minus, n_plus, selectors, q, d, d_mask, d_minus, d_plus):
         q_mid = q[*selectors, 1:-1]
-        q_minus = np.diff(q, axis=-1)[*selectors, :-1]
-        q_plus = np.diff(q, axis=-1)[*selectors, 1:]
+        q_diff = np.diff(q, axis=-1)
+        q_minus = q_diff[*selectors, :-1]
+        q_plus = q_diff[*selectors, 1:]
 
-        quad_q = np.zeros(d_mask.shape)
-        quad_q[d_mask] = P2Histogram._parabola(
-            q_minus[d_mask],
-            q_mid[d_mask],
-            q_plus[d_mask],
-            d[d_mask],
-            n_minus[d_mask],
-            n_plus[d_mask],
+        quad_q = P2Histogram._parabola(
+            q_minus,
+            q_mid,
+            q_plus,
+            d,
+            n_minus,
+            n_plus,
         )
 
         q_mask = (quad_q > q[*selectors, :-2]) * (q[*selectors, 2:] > quad_q) * d_mask
-        padding[*selectors, 1:-1] = q_mask
-        mask[*selectors, 1:-1] = q_mask
-        new_q[padding] = quad_q[q_mask]
 
         l_mask = (q_mask == False) * d_mask
         if np.any(l_mask):
-            lin_q = np.zeros(d_mask.shape)
-            lin_q[l_mask] = P2Histogram._linear(
-                q_minus[l_mask],
-                q_mid[l_mask],
-                q_plus[l_mask],
-                d[l_mask],
-                n_minus[l_mask],
-                n_plus[l_mask],
-            )
+            l_minus = l_mask * d_minus
+            l_plus = l_mask * d_plus
+            quad_q[l_minus] = q_mid[l_minus] - (q_minus[l_minus]) / (n_minus[l_minus])
+            quad_q[l_plus] = q_mid[l_plus] + (q_plus[l_plus]) / (n_plus[l_plus])
 
-            padding[*selectors, 1:-1] = l_mask
-            new_q[padding] = lin_q[l_mask]
-            mask[*selectors, 1:-1] += l_mask
-        return new_q, mask
+        return quad_q
 
 
 class IncrementalAccumulator:
@@ -302,7 +293,7 @@ class IncrementalAccumulator:
             case Accumulator.TIC | Accumulator.TIC.value:
                 return self.tic
             case _:
-                raise TypeError(f"Could not find specified accumulator {index}")
+                raise KeyError(f"Could not find specified accumulator ")
 
     def is_empty(self, index: str | Accumulator) -> bool:
         value = self[index]

@@ -8,7 +8,7 @@ from enum import Enum
 import numpy as np
 
 from .bounds import Shape
-from .normalisation import Accumulator, IncrementalAccumulator
+from .normalisation import Accumulator, IncrementalAccumulator, P2Histogram
 
 
 class Filter(ABC):
@@ -95,6 +95,105 @@ class TotalImages(Filter):
                 return self.tic_spectrum
             case Accumulator.MAX:
                 return self.max_spectrum
+
+
+class AccumulationDirection(Enum):
+    IMAGES = "images"
+    SPECTRA = "spectra"
+    UNKNOWN = "unknown"
+
+
+class PercentileImages(Filter):
+    """
+    A class that accumulates a histogram of the data in image and spectra form.
+    Depending on the direction of accumulation one of these will be explicit (np.percentile) and one will be approximate (P2Histogram)
+    In particular the parallel accumulation is approximate while the orthogonal one is explicit.
+    i.e. if accumulating by image, the images will be approximated by the P2 algorithm and the spectra will be explicitly calculated using np.percentile.
+    """
+
+    def __init__(self, shape: Shape, b: int):
+        super().__init__(shape)
+        self.percentiles = np.linspace(0, 100, num=b + 1, endpoint=True)
+        self.images_p2 = P2Histogram(b, shape[0:2])
+        self.spectra_p2 = P2Histogram(b, (shape[2],))
+
+        self.images_explicit = np.zeros((*self.images_p2.shape, b + 1))
+        self.spectra_explicit = np.zeros((*self.spectra_p2.shape, b + 1))
+
+        self.acc_direction = AccumulationDirection.UNKNOWN
+
+    def _clear(self):
+        self.images_p2 = P2Histogram(self.images_p2.b, self.images_p2.shape)
+        self.spectra_p2 = P2Histogram(self.spectra_p2.b, self.spectra_p2.shape)
+
+        self.images_explicit = np.zeros((*self.images_p2.shape, self.images_p2.b + 1))
+        self.spectra_explicit = np.zeros(
+            (*self.spectra_p2.shape, self.spectra_p2.b + 1)
+        )
+
+        self.acc_direction = AccumulationDirection.UNKNOWN
+
+    def _process_image(self, bin: int, image: np.ndarray):
+        if self.acc_direction == AccumulationDirection.UNKNOWN:
+            self.acc_direction = AccumulationDirection.IMAGES
+        elif self.acc_direction != AccumulationDirection.IMAGES:
+            raise ValueError(
+                f"Only a single direction of accumulation is supported. Previously {self.acc_direction.value} was used, now attempting to use spectra."
+            )
+
+        self.images_p2.add(image)
+        self.spectra_explicit[bin, :] = np.percentile(image, self.percentiles)
+
+        return image
+
+    def _process_spectra(self, w: int, h: int, spectrum: np.ndarray):
+        if self.acc_direction == AccumulationDirection.UNKNOWN:
+            self.acc_direction = AccumulationDirection.SPECTRA
+        elif self.acc_direction != AccumulationDirection.SPECTRA:
+            raise ValueError(
+                f"Only a single direction of accumulation is supported. Previously {self.acc_direction.value} was used, now attempting to use spectra."
+            )
+
+        self.spectra_p2.add(spectrum)
+        self.images_explicit[w, h, :] = np.percentile(spectrum, self.percentiles)
+
+        return spectrum
+
+    def all_percentile_images(self) -> np.ndarray[tuple[int, int, int]]:
+        match self.acc_direction:
+            case AccumulationDirection.IMAGES:
+                return self.images_p2.heights
+            case AccumulationDirection.SPECTRA:
+                return self.images_explicit
+            case _:
+                raise LookupError("No data collected, cannot return image.")
+
+    def image(self, percentile_index: int) -> np.ndarray[tuple[int, int]]:
+        match self.acc_direction:
+            case AccumulationDirection.IMAGES:
+                return self.images_p2.heights_for(percentile_index)
+            case AccumulationDirection.SPECTRA:
+                return self.images_explicit[:, :, percentile_index]
+            case _:
+                raise LookupError("No data collected, cannot return image.")
+
+    def all_percentile_spectrum(self) -> np.ndarray[tuple[int, int]]:
+        match self.acc_direction:
+            case AccumulationDirection.IMAGES:
+                return self.spectra_explicit
+            case AccumulationDirection.SPECTRA:
+                return self.spectra_p2.heights
+            case _:
+                raise LookupError("No data collected, cannot return image.")
+
+    def spectrum(self, percentile_index: int) -> np.ndarray[tuple[int]]:
+        match self.acc_direction:
+            case AccumulationDirection.IMAGES:
+                return self.spectra_explicit[:, percentile_index]
+            case AccumulationDirection.SPECTRA:
+                return self.spectra_p2.heights_for(percentile_index)
+            case _:
+                raise LookupError("No data collected, cannot return image.")
 
 
 class MassRangeTotalImage(Filter):

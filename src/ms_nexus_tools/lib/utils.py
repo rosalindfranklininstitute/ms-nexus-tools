@@ -220,7 +220,8 @@ def indices(shape: Shape, axis=None) -> Iterator[tuple[slice | int, ...]]:
     else:
         if isinstance(axis, int):
             axis = [axis]
-        axis = np.sort(axis)
+        ndim = len(shape)
+        axis = np.sort([a if a >= 0 else a + ndim for a in axis])
         iterable_shape = [shape[ii] for ii in axis]
         ndims = len(shape)
         slices = np.array([0 if ii in axis else slice(None) for ii in range(ndims)])

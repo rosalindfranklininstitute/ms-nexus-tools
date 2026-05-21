@@ -53,6 +53,7 @@ class Chunker:
 
         self.chunk_shape: Shape
         self.chunk_count: Shape
+        self.chunk_items: int
         self.n_chunks: int
 
     @staticmethod
@@ -82,6 +83,7 @@ class Chunker:
             items_per_chunk
         )
         chunker.n_chunks = int(np.prod(chunker.chunk_count))
+        chunker.chunk_items = int(np.prod(chunker.chunk_shape))
         return chunker
 
     @staticmethod
@@ -111,6 +113,7 @@ class Chunker:
             items_per_chunk
         )
         chunker.n_chunks = int(np.prod(chunker.chunk_count))
+        chunker.chunk_items = int(np.prod(chunker.chunk_shape))
         return chunker
 
     def _calculate_from_min_count(self, min_items_per_chunk) -> tuple[Shape, Shape]:
@@ -212,6 +215,7 @@ class Chunker:
             chunk_count
         )
         chunker.n_chunks = int(np.prod(chunker.chunk_count))
+        chunker.chunk_items = int(np.prod(chunker.chunk_shape))
         return chunker
 
     def _calculate_from_min_chunks(self, min_chunk_count):
@@ -308,6 +312,7 @@ class Chunker:
             [math.ceil(d / c) for c, d in zip(chunk_shape, data_shape)]
         )
         chunker.n_chunks = int(np.prod(chunker.chunk_count))
+        chunker.chunk_items = int(np.prod(chunker.chunk_shape))
         return chunker
 
     def __repr__(self) -> str:
@@ -364,7 +369,9 @@ class Chunker:
         return Chunk([self._chunk(ii, jj) for ii, jj in enumerate(index)])
 
 
-def find_chunk_multiple(data_shape, chunk_shape, max_item_count) -> Chunker:
+def find_chunk_multiple(
+    data_shape, chunk_shape, max_item_count, priorities: Shape | None = None
+) -> Chunker:
     """
     Do the things at the place:
     >>> find_chunk_multiple((100,100,100), (10,10,10), 2000).chunk_shape
@@ -378,6 +385,9 @@ def find_chunk_multiple(data_shape, chunk_shape, max_item_count) -> Chunker:
 
     >>> find_chunk_multiple((100,100,100), (10,10,10), 4000).chunk_shape
     (10, 20, 20)
+
+    >>> find_chunk_multiple((100,100,100), (10,10,10), 4000, priorities=(3,2,1)).chunk_shape
+    (10, 10, 40)
 
     >>> find_chunk_multiple((100,100,100), (25,10,4), 3000).chunk_shape
     (25, 10, 12)
@@ -396,16 +406,21 @@ def find_chunk_multiple(data_shape, chunk_shape, max_item_count) -> Chunker:
         )
     max_item_count = max_item_count // items_per_chunk
 
-    priorities = [ii for ii in range(len(data_shape), 0, -1)]
+    if priorities is not None:
+        process_priorities = [priorities]
+    else:
+        last_first = [ii for ii in range(len(data_shape), 0, -1)]
+        process_priorities = [
+            Shape(
+                last_first[jj] if -jj > -ii else 1 for jj in range(0, len(data_shape))
+            )
+            for ii in range(len(data_shape))
+        ]
 
     final_item_count = 0
     final_chunker = None
 
-    for ii in range(0, len(data_shape)):
-        current_priorities = [
-            priorities[jj] if -jj > -ii else 1 for jj in range(0, len(data_shape))
-        ]
-
+    for current_priorities in process_priorities:
         chunker = Chunker.from_max_item_count(
             chunked_data_shape, current_priorities, max_item_count
         )

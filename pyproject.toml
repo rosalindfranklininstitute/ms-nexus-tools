@@ -51,6 +51,13 @@ select=['E4','E7','E9','F','N']
 testpaths = ["./tests", "./src/"]
 addopts = ["--doctest-modules", "--cov=./src/", "--cov-report=html", "--cov-branch"]
 
+[tool.line_profiler.kernprof]
+line-by-line = true
+verbose = false
+skip-zero = true
+prof-mod = [ 'tmp.py', 'ms_nexus_tools']
+prof-imports = true
+
 [tool.typos.files]
 extend-exclude=["elements.py", "SIS_20260218_Elements_and_Isotopes.csv"]
 
