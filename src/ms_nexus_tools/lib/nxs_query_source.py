@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from .bounds import Shape, Chunk
 from .nxs import NexusFile
-from .data_source import AbstractQuerySource
+from .query_source import AbstractQuerySource
 from .filter import Filter, Accumulator
 from .chunking import count_chunks_to_cover
 

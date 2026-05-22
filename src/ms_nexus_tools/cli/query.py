@@ -6,7 +6,7 @@ from pathlib import Path
 
 import datargs
 from ..api import data_query
-from ..lib.nxs_source import NxsQuerySource
+from ..lib.nxs_query_source import NxsQuerySource
 
 
 def query():

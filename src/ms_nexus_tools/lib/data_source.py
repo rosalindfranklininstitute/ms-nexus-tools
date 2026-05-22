@@ -19,66 +19,60 @@ class UnsupportedDataError(RuntimeError):
     pass
 
 
-class AbstractQuerySource(AbstractContextManager):
-    def __init__(self, name: str):
-        self.name = name
-
-    @abstractmethod
-    def shape(self) -> Shape:
-        pass
-
-    @abstractmethod
-    def mass_values(self) -> np.ndarray[tuple[int], Any]:
-        pass
-
-    @abstractmethod
-    def instrament_metadata(self) -> dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def experiment_metadata(self) -> dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def fill_filters(
-        self,
-        layer: int,
-        bins: list[int],
-        xy: list[tuple[int, int]],
-        totals: list[Filter],
-        chunk: Chunk,
-    ):
-        pass
-
-    def accumulated_spectrum(self, accumulator: Accumulator, layer: int) -> np.ndarray:
-        raise UnsupportedDataError()
-
-    def accumulated_image(self, accumulator: Accumulator, layer: int) -> np.ndarray:
-        raise UnsupportedDataError()
-
-
 class AbstractDataSource(AbstractContextManager):
     def __init__(self, cbounds: ContainedBounds):
         self.cbound = cbounds
 
     @abstractmethod
-    def memory_chunk_priorities(self) -> Shape:
+    def output_chunks(self, max_items_per_chunk: int) -> dict[str, Shape]:
+        """
+        Returns the names and chunking of the desired output array.
+        For examlpe simple image data (x,y, spectra) with shape (32,32,184000)
+        might produce:
+        'images': (32,32,1)
+        'spectra': (1,1,184000)
+        """
+        pass
+
+    @abstractmethod
+    def output_accumulations(self) -> dict[str, tuple[int]]:
+        """
+        Returns the names and lists of axis that should have
+        the be accumulated (summed and max) and stored.
+        For examlpe simple image data (x,y, spectra):
+        might produce:
+        'total_images': (2) # Accumulate over the spectra
+        'total_spectra': (0,1) # Accumulate over the images
+        """
         pass
 
     @abstractmethod
     def chunk_read_count(self, memory_chunk: Chunk) -> int:
+        """
+        Returns the number of read operations needed to fill the provided memory chunk.
+        """
         pass
 
     @abstractmethod
     def axis(self) -> GenericAxis:
+        """
+        Returns the axis that should be used when storing the data.
+        """
         pass
 
     @abstractmethod
     def fill_chunk(
         self,
-        layer: int,
         memory_chunk: Chunk,
-        totals: list[Filter],
         update: Callable[[int], None],
     ) -> np.ndarray:
+        """
+        Read data from the source in the region specified by memory_chunk and return that data.
+
+        Parameters:
+        memory_chunk:   The bounds of the data to read.
+        update:         A callback to update progress.
+                        The total of the progress counter is sum([chunk_read_count(mc) for mc in all_memory_chunks])
+
+        """
         pass
