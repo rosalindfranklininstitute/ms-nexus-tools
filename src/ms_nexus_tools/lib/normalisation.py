@@ -19,10 +19,6 @@ class Norm(Enum):
 class Accumulator(Enum):
     TIC = "tic"
     MAX = "max"
-    MIN = "min"
-    MED = "med"
-    P25 = "p25"
-    P75 = "p75"
 
 
 EMPTY = np.full((1,), np.nan)
@@ -89,6 +85,7 @@ class P2Histogram:
         self.selectors = (slice(None),) * len(self.shape)
         self._heights = np.zeros((*self.shape, b + 1))
         self.positions = np.zeros((*self.shape, b + 1))
+        self._percentiles = P2Histogram.percentiles(b)
 
         self.ii = 0
 
@@ -232,62 +229,25 @@ class P2Histogram:
 
         return quad_q
 
+    @staticmethod
+    def percentiles(b: int):
+        return np.linspace(0, 100, num=b + 1, endpoint=True)
+
 
 class IncrementalAccumulator:
     def __init__(self, axis=None):
-        self.p2: P2Histogram | None = None
+        self.max: np.ndarray = EMPTY
         self.tic: np.ndarray = EMPTY
         self.axis: tuple[int, ...] | None = axis
-
-    @property
-    def min(self) -> np.ndarray:
-        if self.p2 is None:
-            return np.array([np.nan])
-        return self.p2.heights_for(0)
-
-    @property
-    def p25(self) -> np.ndarray:
-        if self.p2 is None:
-            return np.array([np.nan])
-        return self.p2.heights_for(1)
-
-    @property
-    def med(self) -> np.ndarray:
-        if self.p2 is None:
-            return np.array([np.nan])
-        return self.p2.heights_for(2)
-
-    @property
-    def p75(self) -> np.ndarray:
-        if self.p2 is None:
-            return np.array([np.nan])
-        return self.p2.heights_for(3)
-
-    @property
-    def max(self) -> np.ndarray:
-        if self.p2 is None:
-            return np.array([np.nan])
-        return self.p2.heights_for(4)
 
     def add(self, data, axis=None):
 
         axis_to_use = axis if axis is not None else self.axis
-        if self.p2 is None:
-            self.p2 = P2Histogram(b=4, shape=reduce_shape(data.shape, axis_to_use))
+        self.max = _operate(np.max, self.tic, data, axis_to_use)
         self.tic = _operate(np.nansum, self.tic, data, axis_to_use)
-        for chunk in iterate(data, axis_to_use):
-            self.p2.add(chunk)
 
     def __getitem__(self, index: str | Accumulator) -> np.ndarray:
         match index:
-            case Accumulator.MIN | Accumulator.MIN.value:
-                return self.min
-            case Accumulator.P25 | Accumulator.P25.value:
-                return self.p25
-            case Accumulator.MED | Accumulator.MED.value:
-                return self.med
-            case Accumulator.P75 | Accumulator.P75.value:
-                return self.p75
             case Accumulator.MAX | Accumulator.MAX.value:
                 return self.max
             case Accumulator.TIC | Accumulator.TIC.value:

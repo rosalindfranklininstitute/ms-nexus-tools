@@ -113,7 +113,7 @@ class PercentileImages(Filter):
 
     def __init__(self, shape: Shape, b: int):
         super().__init__(shape)
-        self.percentiles = np.linspace(0, 100, num=b + 1, endpoint=True)
+        self.percentiles = P2Histogram.percentiles(b)
         self.images_p2 = P2Histogram(b, shape[0:2])
         self.spectra_p2 = P2Histogram(b, (shape[2],))
 
