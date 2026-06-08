@@ -8,8 +8,8 @@ from hypothesis import given, strategies as st
 
 import numpy as np
 
-from ms_nexus_tools.lib.chunking import Chunker
-import ms_nexus_tools.lib.chunking as chunking
+from ms_nexus_tools.lib.chunker import Chunker
+import ms_nexus_tools.lib.chunker as chunker
 
 from icecream import ic
 

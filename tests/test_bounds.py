@@ -5,7 +5,8 @@
 from hypothesis import strategies as st, given
 from pytest import raises
 
-from ms_nexus_tools.lib.bounds import ContainedBounds, Chunk
+from ms_nexus_tools.lib.bounds import Chunk
+from ms_nexus_tools.lib import ContainedBounds
 
 from icecream import ic
 

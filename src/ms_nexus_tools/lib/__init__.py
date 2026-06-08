@@ -2,14 +2,15 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from .h5_printer import print_group
-from .timers import time_this, Timer, JSONTimer
-from . import chunking as chunking
-from . import utils as utils
-from . import image as image
-from .image import OriginLocation
-from . import nxs as nxs
 from . import bounds as bounds
-from .filetypes import DataType
+from . import chunker as chunker
 from . import filter as filter
-from .normalisation import IncrementalAccumulator, Norm, Accumulator
+from . import image as image
+from . import nxs as nxs
+from . import utils as utils
+from .contained_bounds import ContainedBounds
+from .filetypes import DataType
+from .h5_printer import print_group
+from .image import OriginLocation
+from .normalisation import Accumulator, IncrementalAccumulator, Norm
+from .timers import JSONTimer, Timer, time_this

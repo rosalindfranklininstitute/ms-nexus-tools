@@ -14,15 +14,10 @@ from icecream import ic
 from .bounds import Chunk, Shape, Bounds
 
 
-def approximate_gb(int4_count: float) -> float:
-    return (int4_count / 1024 / 1024 / 1024) * 4
-
-
-def approximate_int4_count(gb: float) -> float:
-    return (gb / 4.0) * 1024 * 1024 * 1024
-
-
 def count_chunks_to_cover(data_shape: Shape, chunk_shape: Shape) -> list[int]:
+    """
+    Return the number of chunks of chunk_shape are required to cover the data of shape data_shape.
+    """
     return [math.ceil(data_shape[i] / c) for i, c in enumerate(chunk_shape)]
 
 
@@ -315,6 +310,87 @@ class Chunker:
         chunker.chunk_items = int(np.prod(chunker.chunk_shape))
         return chunker
 
+    @staticmethod
+    def find_chunk_multiple(
+        data_shape, chunk_shape, max_item_count, priorities: Shape | None = None
+    ) -> "Chunker":
+        """
+        Find the chunker that covers data_shape
+        with chunks that are intiger multiples of chunk_shape,
+        with at most max_item_count items per chunk.
+        If priority is not provided all arangements of (1,2,3,...) are searched.
+        If priority is provided, then only that priority is used.
+
+        For example:
+
+        >>> Chunker.find_chunk_multiple((100,100,100), (10,10,10), 2000).chunk_shape
+        (10, 10, 20)
+
+        >>> Chunker.find_chunk_multiple((100,100,100), (10,10,10), 3000).chunk_shape
+        (10, 10, 30)
+
+        >>> Chunker.find_chunk_multiple((100,100,100), (10,10,10), 3500).chunk_shape
+        (10, 10, 30)
+
+        >>> Chunker.find_chunk_multiple((100,100,100), (10,10,10), 4000).chunk_shape
+        (10, 20, 20)
+
+        >>> Chunker.find_chunk_multiple((100,100,100), (10,10,10), 4000, priorities=(3,2,1)).chunk_shape
+        (10, 10, 40)
+
+        >>> Chunker.find_chunk_multiple((100,100,100), (25,10,4), 3000).chunk_shape
+        (25, 10, 12)
+
+        >>> Chunker.find_chunk_multiple((100,100,100), (25,10,4), 4000).chunk_shape
+        (25, 20, 8)
+        """
+
+        chunked_data_shape = tuple(
+            int(math.floor(d // c)) for d, c in zip(data_shape, chunk_shape)
+        )
+        items_per_chunk = int(np.prod(chunk_shape))
+        if max_item_count < items_per_chunk:
+            raise ValueError(
+                f"The Maximum item count ({max_item_count}) must be greater than the number of the items in a chunk ({items_per_chunk})"
+            )
+        max_item_count = max_item_count // items_per_chunk
+
+        if priorities is not None:
+            process_priorities = [priorities]
+        else:
+            last_first = [ii for ii in range(len(data_shape), 0, -1)]
+            process_priorities = [
+                Shape(
+                    last_first[jj] if -jj > -ii else 1
+                    for jj in range(0, len(data_shape))
+                )
+                for ii in range(len(data_shape))
+            ]
+
+        final_item_count = 0
+        final_chunker = None
+
+        for current_priorities in process_priorities:
+            chunker = Chunker.from_max_item_count(
+                chunked_data_shape, current_priorities, max_item_count
+            )
+            memory_chunk_shape = tuple(
+                c * cs for c, cs in zip(chunk_shape, chunker.chunk_shape)
+            )
+            memory_item_count = np.prod(memory_chunk_shape)
+
+            if chunker is None or memory_item_count > final_item_count:
+                final_item_count = memory_item_count
+                final_chunker = chunker
+
+        assert final_chunker is not None
+        return Chunker.from_chunk_shape(
+            data_shape=data_shape,
+            chunk_shape=tuple(
+                c * cs for c, cs in zip(chunk_shape, final_chunker.chunk_shape)
+            ),
+        )
+
     def __repr__(self) -> str:
         return f"data: {self.data_shape} p: {self.priorities} cshape: {self.chunk_shape} ccount: {self.chunk_count}"
 
@@ -390,76 +466,3 @@ class Chunker:
         result = [r for r in result if r >= start and r < end]
         result.append(end)
         return result
-
-
-def find_chunk_multiple(
-    data_shape, chunk_shape, max_item_count, priorities: Shape | None = None
-) -> Chunker:
-    """
-    Do the things at the place:
-    >>> find_chunk_multiple((100,100,100), (10,10,10), 2000).chunk_shape
-    (10, 10, 20)
-
-    >>> find_chunk_multiple((100,100,100), (10,10,10), 3000).chunk_shape
-    (10, 10, 30)
-
-    >>> find_chunk_multiple((100,100,100), (10,10,10), 3500).chunk_shape
-    (10, 10, 30)
-
-    >>> find_chunk_multiple((100,100,100), (10,10,10), 4000).chunk_shape
-    (10, 20, 20)
-
-    >>> find_chunk_multiple((100,100,100), (10,10,10), 4000, priorities=(3,2,1)).chunk_shape
-    (10, 10, 40)
-
-    >>> find_chunk_multiple((100,100,100), (25,10,4), 3000).chunk_shape
-    (25, 10, 12)
-
-    >>> find_chunk_multiple((100,100,100), (25,10,4), 4000).chunk_shape
-    (25, 20, 8)
-    """
-
-    chunked_data_shape = tuple(
-        int(math.floor(d // c)) for d, c in zip(data_shape, chunk_shape)
-    )
-    items_per_chunk = int(np.prod(chunk_shape))
-    if max_item_count < items_per_chunk:
-        raise ValueError(
-            f"The Maximum item count ({max_item_count}) must be greater than the number of the items in a chunk ({items_per_chunk})"
-        )
-    max_item_count = max_item_count // items_per_chunk
-
-    if priorities is not None:
-        process_priorities = [priorities]
-    else:
-        last_first = [ii for ii in range(len(data_shape), 0, -1)]
-        process_priorities = [
-            Shape(
-                last_first[jj] if -jj > -ii else 1 for jj in range(0, len(data_shape))
-            )
-            for ii in range(len(data_shape))
-        ]
-
-    final_item_count = 0
-    final_chunker = None
-
-    for current_priorities in process_priorities:
-        chunker = Chunker.from_max_item_count(
-            chunked_data_shape, current_priorities, max_item_count
-        )
-        memory_chunk_shape = tuple(
-            c * cs for c, cs in zip(chunk_shape, chunker.chunk_shape)
-        )
-        memory_item_count = np.prod(memory_chunk_shape)
-
-        if chunker is None or memory_item_count > final_item_count:
-            final_item_count = memory_item_count
-            final_chunker = chunker
-
-    assert final_chunker is not None
-    return Chunker.from_chunk_shape(
-        data_shape=data_shape,
-        chunk_shape=tuple(
-            c * cs for c, cs in zip(chunk_shape, final_chunker.chunk_shape)
-        ),
-    )
