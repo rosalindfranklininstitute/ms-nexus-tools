@@ -331,6 +331,9 @@ class Chunker:
         )
 
     def chunks(self) -> Generator[Chunk]:
+        """
+        A generator that yeilds all the chunks covered by this chunker.
+        """
 
         indices = np.zeros((self.n_dims,))
         for chunk_inx in range(self.n_chunks):
@@ -345,6 +348,12 @@ class Chunker:
         return
 
     def bulk_chunks(self) -> list[Chunk]:
+        """
+        Returns a minimal set of chunks that covers the space, as cut along
+        chunking boundaries.
+        If all dinensions have more than one data point, this always returns
+        2^ndims chunks. e.g. for data shaped (n,m,o) this will return 2^3 = 8 chunks.
+        """
         dims = len(self.data_shape)
 
         dim_chunks = []
@@ -367,6 +376,20 @@ class Chunker:
 
     def chunk_for_index(self, index: tuple[int, ...]) -> Chunk:
         return Chunk([self._chunk(ii, jj) for ii, jj in enumerate(index)])
+
+    def edges_of_axis(
+        self, index: int, start: int | None = None, end: int | None = None
+    ):
+
+        chunk_length = self.chunk_shape[index]
+        data_length = self.data_shape[index]
+        start = start if start is not None else 0
+        end = end if end is not None else data_length
+
+        result = [chunk_length * ii for ii in range(self.chunk_count[index])]
+        result = [r for r in result if r >= start and r < end]
+        result.append(end)
+        return result
 
 
 def find_chunk_multiple(
