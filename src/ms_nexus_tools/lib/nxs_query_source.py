@@ -13,7 +13,7 @@ from .bounds import Shape, Chunk
 from .nxs import NexusFile
 from .query_source import AbstractQuerySource
 from .filter import Filter, Accumulator
-from .chunking import count_chunks_to_cover
+from .chunker import count_chunks_to_cover
 
 
 class NxsQuerySource(AbstractQuerySource):

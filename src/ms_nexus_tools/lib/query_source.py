@@ -10,12 +10,10 @@ from pathlib import Path
 
 import numpy as np
 
-from .filter import Filter, Accumulator
-from .bounds import ContainedBounds, Chunk, Shape
-
-
-class UnsupportedDataError(RuntimeError):
-    pass
+from .bounds import Chunk, Shape
+from .exceptions import UnsupportedDataError
+from .filter import Filter
+from .normalisation import Accumulator
 
 
 class AbstractQuerySource(AbstractContextManager):

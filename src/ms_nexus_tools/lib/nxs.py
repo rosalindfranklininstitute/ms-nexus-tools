@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
 
-from .bounds import Shape, ContainedBounds, Chunk
-from .chunking import Chunker
+from .bounds import Shape, Chunk
+from .contained_bounds import ContainedBounds
+from .chunker import Chunker
 from .filter import Accumulator
 
 from nexusformat.nexus import NXentry, NXfield, NXdata, nxload
@@ -23,7 +24,7 @@ from nexusformat.nexus.tree import (
 
 
 @dataclass
-class Axis:
+class NxAxis:
     name: str
     indices: list[int]
     field: NXfield
@@ -40,7 +41,7 @@ class Axis:
         if unit is not None:
             field.attrs["unit"] = unit
 
-        return Axis(name=name, indices=indices, field=field)
+        return NxAxis(name=name, indices=indices, field=field)
 
     @staticmethod
     def create_empty(
@@ -52,6 +53,7 @@ class Axis:
         compression_opts: Any = None,
         chunks: Shape | None = None,
         unit: str | None = None,
+        fillvalue: int | float | None = None,
     ):
         field = NXfield(
             name=name,
@@ -60,11 +62,12 @@ class Axis:
             compression=compression,
             compression_opts=compression_opts,
             chunks=chunks,
+            fillvalue=fillvalue,
         )
         if unit is not None:
             field.attrs["unit"] = unit
 
-        return Axis(name=name, indices=indices, field=field)
+        return NxAxis(name=name, indices=indices, field=field)
 
     def add_to_group(self, group: NXdata):
         group.attrs[f"{self.name}_indices"] = self.indices
@@ -76,17 +79,17 @@ class Axis:
     def __getitem__(self, index):
         return self.field[index]
 
-    def copy_with_incremented_indices(self, inc: int) -> "Axis":
-        return Axis(
+    def copy_with_incremented_indices(self, inc: int) -> "NxAxis":
+        return NxAxis(
             name=self.name, indices=[i + inc for i in self.indices], field=self.field
         )
 
 
-class GenericAxis(list[list[Axis]]):
+class NxAxes(list[list[NxAxis]]):
     def default_list(self) -> list[str]:
         return [v[0].name for v in self]
 
-    def list_all(self) -> list[Axis]:
+    def list_all(self) -> list[NxAxis]:
         results = []
         for v in self:
             results.extend(v)
@@ -101,7 +104,7 @@ class GenericAxis(list[list[Axis]]):
 class FieldOptions(NamedTuple):
     compression: Any
     compression_opts: int | None
-    max_items_per_chunk: int
+    max_bytes_per_chunk: int
     shuffle: bool
 
 
@@ -116,6 +119,7 @@ class NexusFile:
             self._file["entry"] = NXentry()
             self.root = self._file["entry"]
             self.root["instrument"] = NXinstrument()
+            self.root["experiment"] = NXparameters()
         else:
             self.root = self._file["entry"]
 
@@ -131,6 +135,17 @@ class NexusFile:
 
     instrument = property(
         _get_instrument, _set_instrument, None, "The instrument group"
+    )
+
+    def _get_experiment(self):
+        return self.root["experiment"]
+
+    def _set_experiment(self, value: NXparameters):
+        assert isinstance(value, NXparameters)
+        self.root["experiment"] = value
+
+    experiment = property(
+        _get_experiment, _set_experiment, None, "The experiment group"
     )
 
     def link_data(self, data_path: str):
@@ -156,7 +171,7 @@ class NexusFile:
     def set_data(
         self,
         field: NXfield,
-        axes: GenericAxis,
+        axes: NxAxes,
         errors: NXfield | None = None,
         weights: NXfield | None = None,
     ) -> NXdata:
@@ -168,7 +183,7 @@ class NexusFile:
         self,
         name: str,
         field: NXfield,
-        axes: GenericAxis,
+        axes: NxAxes,
         errors: NXfield | None = None,
         weights: NXfield | None = None,
     ) -> NXsubentry:
@@ -180,7 +195,7 @@ class NexusFile:
 
 
 def create_field(
-    dtype: str | None = None,
+    dtype: str | type | None = None,
     shape: Shape | None = None,
     compression: str | None = None,
     compression_opts: Any = None,
@@ -207,7 +222,7 @@ def create_chunked_subentry(
     memory_shape: Shape,
     data_shape: Shape,
     priorities: Shape,
-    axes: GenericAxis,
+    axes: NxAxes,
 ) -> tuple[Chunker, NXsubentry]:
     assert len(data_shape) == len(priorities)
     assert len(data_shape) == len(axes)
@@ -252,17 +267,17 @@ def write_from_data(
     compression: str = "gzip",
     compression_level: int = 4,
 ) -> NexusFile:
-    axes = GenericAxis(
+    axes = NxAxes(
         [
             [
-                Axis.create(
+                NxAxis.create(
                     values=np.arange(1, data.shape[0] + 1, 1.0),
                     name="layer",
                     indices=[1],
                 )
             ],
             [
-                Axis.create(
+                NxAxis.create(
                     values=np.arange(0, data.shape[1], 1.0) * x_microns,
                     name="x",
                     unit="micron",
@@ -270,14 +285,14 @@ def write_from_data(
                 )
             ],
             [
-                Axis.create(
+                NxAxis.create(
                     values=np.arange(0, data.shape[2], 1.0) * y_microns,
                     name="y",
                     unit="micron",
                     indices=[2],
                 )
             ],
-            [Axis.create(values=mass, name="mass", unit=mass_unit, indices=[3])],
+            [NxAxis.create(values=mass, name="mass", unit=mass_unit, indices=[3])],
         ]
     )
 
@@ -310,39 +325,42 @@ def create_standard_file(
     data_shape: Shape,
     out_chunk: Chunk,
     out_path: Path,
-    axes: GenericAxis | None = None,
+    axes: NxAxes | None = None,
     field_options=FieldOptions(
-        compression="gzip", compression_opts=4, max_items_per_chunk=46000, shuffle=False
+        compression="gzip",
+        compression_opts=4,
+        max_bytes_per_chunk=1024 * 1024 * 8,
+        shuffle=False,
     ),
 ) -> tuple[NexusFile, ContainedBounds, tuple[Chunker, ...]]:
     cbounds = ContainedBounds.from_chunk(outer_shape=data_shape, inner_chunk=out_chunk)
 
     if axes is None:
-        axes = GenericAxis(
+        axes = NxAxes(
             [
                 [
-                    Axis.create(
+                    NxAxis.create(
                         name="layer",
                         values=out_chunk.arange(0),
                         indices=[0],
                     )
                 ],
                 [
-                    Axis.create(
+                    NxAxis.create(
                         name="x",
                         values=out_chunk.arange(1),
                         indices=[1],
                     )
                 ],
                 [
-                    Axis.create(
+                    NxAxis.create(
                         name="y",
                         values=out_chunk.arange(2),
                         indices=[2],
                     )
                 ],
                 [
-                    Axis.create(
+                    NxAxis.create(
                         name="mass",
                         values=out_chunk.arange(3),
                         indices=[3],
@@ -353,7 +371,7 @@ def create_standard_file(
     acc_count = len(Accumulator)
     total_axes = [
         [
-            Axis.create(
+            NxAxis.create(
                 name="accumulator",
                 values=[t.value for t in Accumulator],
                 indices=[0],
@@ -384,7 +402,7 @@ def create_standard_file(
         memory_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
         data_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
         priorities=(3, 2, 1),
-        axes=GenericAxis([total_axes[0], total_axes[1], total_axes[4]]),
+        axes=NxAxes([total_axes[0], total_axes[1], total_axes[4]]),
     )
 
     image_chunks, images = create_chunked_subentry(
@@ -414,7 +432,7 @@ def create_standard_file(
             cbounds.inner_shape[2],
         ),
         priorities=(3, 2, 1, 1),
-        axes=GenericAxis([total_axes[0], total_axes[1], total_axes[2], total_axes[3]]),
+        axes=NxAxes([total_axes[0], total_axes[1], total_axes[2], total_axes[3]]),
     )
     return (
         nxs,

@@ -33,9 +33,9 @@ from .mass_range_args import (
     plot_mass_ranges,
     accumulate_mass_ranges,
 )
-from ..lib.data_source import AbstractQuerySource, UnsupportedDataError
+from ..lib.query_source import AbstractQuerySource, UnsupportedDataError
 from ..lib.bounds import Chunk
-from ..lib.chunking import count_chunks_to_cover
+from ..lib.chunker import count_chunks_to_cover
 from ..lib.filter import MassRangeTotalImage, Accumulator
 from ..lib.image import OriginLocation, adjust_origin
 from ..lib.nxs import NexusFile
