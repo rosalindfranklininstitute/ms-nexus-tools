@@ -15,28 +15,28 @@ from icecream import ic
 
 def test_itmes_overflow():
 
-    chunker = Chunker.from_min_item_count(
+    chunker = Chunker.from_max_item_count(
         data_shape=(100, 100, 100), priorities=(1, 2, 3), items_per_chunk=10
     )
 
     assert chunker.chunk_shape == (10, 1, 1)
     assert chunker.chunk_count == (10, 100, 100)
 
-    chunker = Chunker.from_min_item_count(
+    chunker = Chunker.from_max_item_count(
         data_shape=(100, 100, 100), priorities=(1, 2, 3), items_per_chunk=200
     )
 
     assert chunker.chunk_shape == (100, 2, 1)
     assert chunker.chunk_count == (1, 50, 100)
 
-    chunker = Chunker.from_min_item_count(
+    chunker = Chunker.from_max_item_count(
         data_shape=(100, 100, 100), priorities=(3, 2, 1), items_per_chunk=10
     )
 
     assert chunker.chunk_shape == (1, 1, 10)
     assert chunker.chunk_count == (100, 100, 10)
 
-    chunker = Chunker.from_min_item_count(
+    chunker = Chunker.from_max_item_count(
         data_shape=(100, 100, 100), priorities=(3, 2, 1), items_per_chunk=200
     )
 
@@ -46,33 +46,33 @@ def test_itmes_overflow():
 
 def test_itmes_matched_priorities():
 
-    chunker = Chunker.from_min_item_count(
+    chunker = Chunker.from_max_item_count(
         data_shape=(100, 100, 100), priorities=(1, 1, 2), items_per_chunk=10
     )
 
-    assert chunker.chunk_shape == (4, 4, 1)
-    assert chunker.chunk_count == (25, 25, 100)
+    assert chunker.chunk_shape == (3, 3, 1)
+    assert chunker.chunk_count == (34, 34, 100)
 
-    chunker = Chunker.from_min_item_count(
+    chunker = Chunker.from_max_item_count(
         data_shape=(100, 100, 100), priorities=(1, 1, 2), items_per_chunk=200
     )
 
-    assert chunker.chunk_shape == (15, 15, 1)
-    assert chunker.chunk_count == (7, 7, 100)
+    assert chunker.chunk_shape == (14, 14, 1)
+    assert chunker.chunk_count == (8, 8, 100)
 
-    chunker = Chunker.from_min_item_count(
+    chunker = Chunker.from_max_item_count(
         data_shape=(100, 100, 100), priorities=(1, 1, 1), items_per_chunk=10
     )
 
-    assert chunker.chunk_shape == (3, 3, 3)
-    assert chunker.chunk_count == (34, 34, 34)
+    assert chunker.chunk_shape == (2, 2, 2)
+    assert chunker.chunk_count == (50, 50, 50)
 
-    chunker = Chunker.from_min_item_count(
+    chunker = Chunker.from_max_item_count(
         data_shape=(100, 100, 100), priorities=(1, 1, 1), items_per_chunk=200
     )
 
-    assert chunker.chunk_shape == (6, 6, 6)
-    assert chunker.chunk_count == (17, 17, 17)
+    assert chunker.chunk_shape == (5, 5, 5)
+    assert chunker.chunk_count == (20, 20, 20)
 
 
 def test_count_overflow():
@@ -139,12 +139,12 @@ def test_count_matched_priorities():
 
 def test_chunks():
 
-    chunker = Chunker.from_min_item_count(
+    chunker = Chunker.from_max_item_count(
         data_shape=(10, 10, 10), priorities=(1, 1, 1), items_per_chunk=10
     )
 
-    assert chunker.chunk_shape == (3, 3, 3)
-    assert chunker.chunk_count == (4, 4, 4)
+    assert chunker.chunk_shape == (2, 2, 2)
+    assert chunker.chunk_count == (5, 5, 5)
 
     chunks = [chunk for chunk in chunker.chunks()]
     assert len(chunks) == np.prod(chunker.chunk_count)
@@ -174,12 +174,12 @@ def test_chunks():
 
 def test_bulk_chunks():
 
-    chunker = Chunker.from_min_item_count(
+    chunker = Chunker.from_max_item_count(
         data_shape=(10, 10, 10), priorities=(1, 1, 1), items_per_chunk=10
     )
 
-    assert chunker.chunk_shape == (3, 3, 3)
-    assert chunker.chunk_count == (4, 4, 4)
+    assert chunker.chunk_shape == (2, 2, 2)
+    assert chunker.chunk_count == (5, 5, 5)
 
     chunks = chunker.bulk_chunks()
     assert len(chunks) == 2 ** len(chunker.data_shape)
@@ -191,12 +191,12 @@ def test_bulk_chunks():
     assert (flags == 1).all()
     assert np.sum(flags) == np.prod(chunker.data_shape)
 
-    chunker = Chunker.from_min_item_count(
+    chunker = Chunker.from_max_item_count(
         data_shape=(1, 10, 10), priorities=(1, 1, 1), items_per_chunk=10
     )
 
-    assert chunker.chunk_shape == (1, 5, 5)
-    assert chunker.chunk_count == (1, 2, 2)
+    assert chunker.chunk_shape == (1, 3, 3)
+    assert chunker.chunk_count == (1, 4, 4)
 
     chunks = chunker.bulk_chunks()
     assert len(chunks) == 2 ** (len(chunker.data_shape) - 1)

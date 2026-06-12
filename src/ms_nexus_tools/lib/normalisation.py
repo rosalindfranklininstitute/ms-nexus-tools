@@ -243,7 +243,7 @@ class IncrementalAccumulator:
     def add(self, data, axis=None):
 
         axis_to_use = axis if axis is not None else self.axis
-        self.max = _operate(np.max, self.tic, data, axis_to_use)
+        self.max = _operate(np.max, self.max, data, axis_to_use)
         self.tic = _operate(np.nansum, self.tic, data, axis_to_use)
 
     def __getitem__(self, index: str | Accumulator) -> np.ndarray:
