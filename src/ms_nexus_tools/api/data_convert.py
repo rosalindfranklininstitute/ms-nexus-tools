@@ -1,13 +1,15 @@
 # SPDX-FileCopyrightText: 2026 Duncan McDougall <duncan.mcdougall@rfi.ac.uk>
 #
 # SPDX-License-Identifier: Apache-2.0
+from ms_nexus_tools.lib.dtypes import Int1Dp
 
-from typing import Any
+from typing import Any, reveal_type
 from threading import Lock, local
 import concurrent.futures as cfutures
 from dataclasses import dataclass, field
 from pathlib import Path
 import numpy as np
+import numpy.typing as npt
 import sparse
 import dask.array as da
 
@@ -38,6 +40,14 @@ from ..lib import ContainedBounds
 from ..lib.chunker import Chunker, count_chunks_to_cover
 from ..lib.nxs import NexusFile, FieldOptions, NxAxis, create_field, NxAxes
 from ..lib.utils import format_bytes
+
+
+def _count_subentry_name():
+    return "item_counts"
+
+
+def _items(d: dict[str, Any]) -> list[tuple[str, Any]]:
+    return [(k, v) for k, v in d.items()]
 
 
 @dataclass
@@ -80,7 +90,7 @@ class ProcessArgs(
 
 
 def provision_subentries(
-    nxs: NexusFile, args: ProcessArgs, full_shape: Shape
+    nxs: NexusFile, args: ProcessArgs, full_shape: Shape, sparse: bool
 ) -> dict[str, Chunker]:
     data_priorities = args.data_source.output_chunks()
     if len(data_priorities) == 0:
@@ -94,17 +104,26 @@ def provision_subentries(
             raise ValueError(
                 f"An invalid set of priorities was returned for dataset {name}: there should be {len(full_shape)} items, but only {len(priorities)} were provided."
             )
+    signal_item_width = np.dtype(args.data_source.signal_type()).itemsize
     data_chunks = {
         name: Chunker.from_max_item_count(
             data_shape=full_shape,
             priorities=priorities,
-            items_per_chunk=(
-                args.field_options.max_bytes_per_chunk
-                / np.dtype(args.data_source.signal_type()).itemsize
+            items_per_chunk=int(
+                args.field_options.max_bytes_per_chunk / signal_item_width
             ),
         )
         for name, priorities in data_priorities.items()
     }
+    if sparse:
+        counts_item_width = np.dtype(np.uint16).itemsize
+        data_chunks[_count_subentry_name()] = Chunker.from_max_item_count(
+            data_shape=full_shape,
+            priorities=tuple(1 for _ in full_shape),
+            items_per_chunk=int(
+                args.field_options.max_bytes_per_chunk / counts_item_width
+            ),
+        )
 
     for name, chunker in data_chunks.items():
         nxs.root[name] = NXsubentry(
@@ -181,6 +200,13 @@ def provision_data_axis(
                     all_axis: list[int] = sorted(
                         [axis.primary_axis, *axis.secondary_axes]
                     )
+                    values = args.data_source.sparse_axis_edges(axis)[1:]
+                    nx_axis = NxAxis.create(
+                        values=values,
+                        name=axis.name,
+                        indices=[axis.primary_axis],
+                        unit=axis.units,
+                    )
                     nx_axis_exact = NxAxis.create_empty(
                         name=f"{axis.name}_exact",
                         indices=all_axis,
@@ -191,13 +217,6 @@ def provision_data_axis(
                         chunks=chunker.chunk_shape,
                         dtype=axis.dtype,
                         fillvalue=np.nan,
-                    )
-                    values = args.data_source.sparse_axis_edges(axis)[1:]
-                    nx_axis = NxAxis.create(
-                        values=values,
-                        name=axis.name,
-                        indices=[axis.primary_axis],
-                        unit=axis.units,
                     )
                     group_axes.append([nx_axis, nx_axis_exact])
                 case _:
@@ -215,9 +234,10 @@ class Accumulation:
     shape: Shape
 
     contains_sparse_axes: bool = field(init=False)
-    coverage_check: np.ndarray = field(init=False)
     max_data: np.ndarray = field(init=False)
     sum_data: np.ndarray = field(init=False)
+    ndim: int = field(init=False)
+    has_data: bool = field(init=False)
 
     def __post_init__(self):
 
@@ -227,18 +247,40 @@ class Accumulation:
                 self.contains_sparse_axes = True
                 break
 
-        self.coverage_check = np.full(self.shape, False)
         self.max_data = np.zeros(self.shape)
         self.sum_data = np.zeros(self.shape)
+        self.ndim = len(self.shape)
+        self.has_data = False
+
+    def add(self, data: np.ndarray | sparse.COO, chunk: Chunk):
+        sub_chunk = Chunk([chunk[ii] for ii in range(data.ndim) if ii not in self.axis])
+
+        max_data = np.maximum(
+            self.max_data[*sub_chunk], data[*chunk].max(axis=self.axis)
+        )
+        sum_data = np.add(self.sum_data[*sub_chunk], data[*chunk].sum(axis=self.axis))
+
+        if isinstance(max_data, sparse.COO):
+            self.max_data[*sub_chunk] = max_data.todense()
+        else:
+            self.max_data[*sub_chunk] = max_data
+
+        if isinstance(sum_data, sparse.COO):
+            self.sum_data[*sub_chunk] = sum_data.todense()
+        else:
+            self.sum_data[*sub_chunk] = sum_data
+
+        self.has_data = True
 
 
 def provision_accumulation_subentries(
     nxs: NexusFile, args: ProcessArgs, shape: Shape, axis_definitions: dict[str, Axis]
-) -> dict[str, Accumulation]:
+) -> tuple[dict[str, Accumulation], dict[str, Accumulation]]:
     accumulations = args.data_source.output_accumulations()
     dtype = args.data_source.signal_type()
 
-    accumulation_axis: dict[str, Accumulation] = {}
+    final_accumulations: dict[str, Accumulation] = {}
+    count_accumulations: dict[str, Accumulation] = {}
 
     # NOTE: Assumption: an axis only defines 1 dimension.
     for name, axes in accumulations.items():
@@ -276,8 +318,15 @@ def provision_accumulation_subentries(
                 )
                 group_axes.append([nx_axis])
 
-        accumulation_axis[name] = Accumulation(
-            name,
+        final_accumulations[name] = Accumulation(
+            name=name,
+            axis=tuple(axis),
+            axis_edges=edges,
+            shape=Shape(acc_shape),
+        )
+        counts_name = f"{_count_subentry_name()}_{name}"
+        count_accumulations[counts_name] = Accumulation(
+            name=counts_name,
             axis=tuple(axis),
             axis_edges=edges,
             shape=Shape(acc_shape),
@@ -296,8 +345,34 @@ def provision_accumulation_subentries(
                 )
             )
         )
+        nxs.root[counts_name] = NXsubentry(
+            NXdata(
+                signal=create_field(
+                    dtype=np.uint16,
+                    shape=(2, *acc_shape),
+                    compression=args.field_options.compression,
+                    compression_opts=args.field_options.compression_opts,
+                    chunks=None,
+                    shuffle=args.field_options.shuffle,
+                    fillvalue=0,
+                )
+            )
+        )
         group_axes.add_to_group(nxs.root[name]["data"])
-    return accumulation_axis
+        group_axes.add_to_group(nxs.root[counts_name]["data"])
+
+    return final_accumulations, count_accumulations
+
+
+def _unique(coords, shape):
+    linear: Int1Dp = np.ravel_multi_index(coords, shape)
+    order = np.argsort(linear)
+    linear = linear[order]
+
+    unique_mask = np.diff(linear) != 0
+    unique_mask = np.append(True, unique_mask)
+
+    return coords[:, order][:, unique_mask]
 
 
 def write_data(
@@ -308,10 +383,15 @@ def write_data(
     sparse_axis: list[Axis],
     chunk_data: np.ndarray | MultiCOO,
     data_chunks: dict[str, Chunker],
-):
+) -> tuple[np.ndarray | None] | tuple[sparse.COO, sparse.COO]:
     if len(sparse_axis) == 0:
+        if not isinstance(chunk_data, np.ndarray):
+            raise ValueError("Data is not sparse, expected a full block of data.")
+
         for data_entry in data_chunks:
-            nxs.root[data_entry].data.signal[*memory_chunk] = chunk_data[0][...]
+            assert data_entry != _count_subentry_name()
+            nxs.root[data_entry].data.signal[*memory_chunk] = chunk_data
+        return chunk_data, None
     else:
         if len(sparse_axis) != 1:
             raise NotImplementedError("Only 1 sparse axis is supported.")
@@ -321,7 +401,7 @@ def write_data(
             )
 
         try:
-            final_data, counts = chunk_data.sort(full_shape).sum_duplicates(
+            final_data, counts = chunk_data.sort(full_shape).acc_duplicates(
                 full_shape, count=True
             )
         except ValueError:
@@ -340,13 +420,7 @@ def write_data(
             has_duplicates=False,
             prune=False,
         )
-        # TODO: somehow report the final density of each data chunk.
-        #
-        # max_label_cnt = np.max(counts)
-        # if max_label_cnt > 1:
-        # warning(
-        #     f"There are conflicting mass bins: {max_label_cnt} items were added to one bin."
-        # )
+
         axis_data = sparse.COO(
             coords=final_data.coords,
             data=final_data.axis[0],
@@ -356,12 +430,19 @@ def write_data(
             prune=False,
         )
 
+        count_data = sparse.COO(
+            coords=final_data.coords,
+            data=counts,
+            shape=full_shape,
+            sorted=True,
+            has_duplicates=False,
+            prune=False,
+        )
+
         axis = sparse_axis[0]
+
         for data_entry, data_chunker in data_chunks.items():
             cbounds = ContainedBounds.from_chunk(data_chunker.data_shape, memory_chunk)
-
-            entry_memory_chunks = cbounds.chunks(data_chunker.chunk_shape)
-            outer_chunks = [c[0] for c in entry_memory_chunks]
 
             chunk_edges = cbounds.chunk_edges(data_chunker.chunk_shape)
 
@@ -373,7 +454,10 @@ def write_data(
                     for ii in range(final_data.coords.shape[0])
                 ],
             )
-            coords = np.unique(coords, axis=1)
+
+            coords = _unique(coords - 1, data_chunker.chunk_count) + 1
+            # coords = np.unique(coords, axis=1)
+
             unique_chunk_count = coords.shape[1]
             total_chunk_count = np.prod([len(edges) - 1 for edges in chunk_edges])
 
@@ -392,7 +476,7 @@ def write_data(
 
             for ii in tqdm(
                 range(starts.shape[1]),
-                desc=f"Writing chunks for {data_entry} density: {unique_chunk_count / total_chunk_count:.2f}",
+                desc=f"Writing chunks for {data_entry} (density: {unique_chunk_count / total_chunk_count:.2f})",
                 leave=False,
             ):
                 chunk = Chunk(
@@ -401,6 +485,11 @@ def write_data(
                         for jj, (sc, ec) in enumerate(zip(starts[:, ii], ends[:, ii]))
                     ]
                 )
+
+                if data_entry == _count_subentry_name():
+                    signal_chunk = count_data[*chunk]
+                else:
+                    signal_chunk = signal_data[*chunk]
 
                 axis_chunk = axis_data[*chunk]
                 signal_chunk = signal_data[*chunk]
@@ -412,6 +501,27 @@ def write_data(
                 nxs.root[data_entry].data[f"{axis.name}_exact"][*chunk] = (
                     axis_chunk.todense()
                 )
+        return signal_data, count_data
+
+
+def accumulate_data(
+    accumulations: dict[str, Accumulation],
+    count_accumulations: dict[str, Accumulation],
+    memory_chunk: Chunk,
+    data: np.ndarray | sparse.COO,
+    counts: None | sparse.COO,
+):
+
+    total = len(accumulations) + len(count_accumulations) if counts is not None else 0
+
+    with tqdm(total=total, desc="Accumulating", leave=False) as progress:
+        for accumulation in accumulations.values():
+            accumulation.add(data, memory_chunk)
+            progress.update()
+        if counts is not None:
+            for accumulation in count_accumulations.values():
+                accumulation.add(counts, memory_chunk)
+                progress.update()
 
 
 def process(args: ProcessArgs, config: dict[str, Any] = {}):
@@ -428,7 +538,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
         full_shape, density = args.data_source.shape()
         print(f" Giving a final data shape of {full_shape}")
 
-        data_chunks = provision_subentries(nxs, args, full_shape)
+        data_chunks = provision_subentries(nxs, args, full_shape, density != 1.0)
         axis_definitions, any_sparse_axis = provision_data_axis(nxs, args, data_chunks)
 
         signal_width = np.dtype(args.data_source.signal_type()).itemsize
@@ -442,7 +552,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
             args, memory_max_item_count, density, data_chunks
         )
 
-        accumulations = provision_accumulation_subentries(
+        accumulations, count_accumulations = provision_accumulation_subentries(
             nxs, args, full_shape, axis_definitions
         )
 
@@ -465,11 +575,16 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
             f"maximum chunk size ({format_bytes(args.field_options.max_bytes_per_chunk)})"
         )
         for name, chunker in data_chunks.items():
+            width = (
+                np.dtype(np.uint16).itemsize
+                if name == _count_subentry_name()
+                else signal_width
+            )
             print(
                 f"    {name: >10}: chunk shape {chunker.chunk_shape} and total count {chunker.chunk_count} and memory count {count_chunks_to_cover(memory_chunks.chunk_shape, chunker.chunk_shape)}."
             )
             print(
-                f"    {' ' * 10}: chunk size: {np.prod(chunker.chunk_shape)} items ({format_bytes(np.prod(chunker.chunk_shape) * signal_width)})."
+                f"    {' ' * 10}: chunk size: {np.prod(chunker.chunk_shape)} items ({format_bytes(np.prod(chunker.chunk_shape) * width)})."
             )
 
         with tqdm(desc="Overall reads", total=total_read_count) as overall_reads_timer:
@@ -485,7 +600,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                     )
 
                 with nexus_file_lock:
-                    write_data(
+                    local_store.written_signal, local_store.written_count = write_data(
                         nxs,
                         args,
                         memory_chunk,
@@ -493,6 +608,16 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                         sparse_axis,
                         local_store.chunk_data,
                         data_chunks,
+                    )
+                    del local_store.chunk_data
+
+                with accumulation_lock:
+                    accumulate_data(
+                        accumulations,
+                        count_accumulations,
+                        memory_chunk,
+                        local_store.written_signal,
+                        local_store.written_count,
                     )
                 pass
 
@@ -516,19 +641,11 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                             f.cancel()
                         raise
 
-        first_data_chunk = next(iter(data_chunks))
-        first_entity = nxs.root[first_data_chunk]
-        read_data = da.from_array(
-            first_entity.data.signal, chunks=first_entity.data.signal.chunks
-        )
-
-        for name, accumulation in accumulations.items():
-            with TqdmCallback(desc=f"Accumulating {name}"):
-                acc_shape = nxs.root[name].data.signal.shape
-                extra_slices = [slice(None) for _ in range(1, len(acc_shape))]
-                nxs.root[name].data.signal[0, *extra_slices] = read_data.max(
-                    axis=accumulation.axis
-                ).compute()
-                nxs.root[name].data.signal[1, *extra_slices] = read_data.sum(
-                    axis=accumulation.axis
-                ).compute()
+        for name, accumulation in tqdm(
+            [*_items(accumulations), *_items(count_accumulations)],
+            desc="Writing accumulations",
+        ):
+            if accumulation.has_data:
+                extra_slices = [slice(None) for _ in range(0, accumulation.ndim)]
+                nxs.root[name].data.signal[0, *extra_slices] = accumulation.max_data
+                nxs.root[name].data.signal[1, *extra_slices] = accumulation.sum_data

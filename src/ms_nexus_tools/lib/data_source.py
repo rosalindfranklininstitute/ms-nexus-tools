@@ -4,13 +4,14 @@
 from ms_nexus_tools.lib.dtypes import Any1D, Int1D32, Int1Dp
 
 from contextlib import AbstractContextManager
-from typing import Any, Callable, NamedTuple
+from typing import Any, Callable, NamedTuple, Sequence
 from abc import abstractmethod
 from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
+import numpy.typing as npt
 import sparse
 
 from .bounds import Chunk, Shape
@@ -28,7 +29,7 @@ class Axis:
     primary_axis: int  # NOTE: Assumption: an axis only defines 1 dimension. Nexus is more poweful than this.
     secondary_axes: list[int]
     density: AxisDensity
-    dtype: np.generic
+    dtype: npt.DTypeLike
     units: str | None = None
 
 
@@ -58,7 +59,13 @@ class MultiCOO(NamedTuple):
             axis=[a[order] for a in self.axis],
         )
 
-    def sum_duplicates(self, shape: Shape, count=False) -> tuple["MultiCOO", Int1Dp]:
+    def acc_duplicates(
+        self,
+        shape: Shape,
+        count=False,
+        signal_acc: np.ufunc = np.add,
+        axis_acc: np.ufunc | Sequence[np.ufunc] = np.maximum,
+    ) -> tuple["MultiCOO", Int1Dp]:
         # Inspired by sparse.COO
         # See https://github.com/pydata/sparse/blob/main/LICENSE
         # This is the BSD 3-clause license
@@ -78,13 +85,23 @@ class MultiCOO(NamedTuple):
             counts = np.diff(unique_inds)
             counts = np.append(counts, len(linear) - unique_inds[-1])
 
+        if isinstance(axis_acc, Sequence):
+            axis = [
+                f.reduceat(a, unique_inds, dtype=self.signal.dtype)
+                for f, a in zip(axis_acc, self.axis)
+            ]
+        else:
+            axis = [
+                axis_acc.reduceat(a, unique_inds, dtype=self.signal.dtype)
+                for a in self.axis
+            ]
+
         return MultiCOO(
             coords=coords,
-            signal=np.add.reduceat(self.signal, unique_inds, dtype=self.signal.dtype),
-            axis=[
-                np.add.reduceat(a, unique_inds, dtype=self.signal.dtype)
-                for a in self.axis
-            ],
+            signal=signal_acc.reduceat(
+                self.signal, unique_inds, dtype=self.signal.dtype
+            ),
+            axis=axis,
         ), counts
 
 
@@ -111,7 +128,7 @@ class AbstractDataSource(AbstractContextManager):
         pass
 
     @abstractmethod
-    def signal_type(self) -> np.generic:
+    def signal_type(self) -> npt.DTypeLike:
         """
         Returns the type for data.
         """

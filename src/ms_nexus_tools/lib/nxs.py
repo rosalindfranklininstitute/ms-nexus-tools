@@ -6,6 +6,7 @@ from typing import Any, Self, NamedTuple
 from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
+import numpy.typing as npt
 
 from .bounds import Shape, Chunk
 from .contained_bounds import ContainedBounds
@@ -47,7 +48,7 @@ class NxAxis:
     def create_empty(
         name: str,
         indices: list[int],
-        dtype: type,
+        dtype: npt.DTypeLike,
         shape: Shape,
         compression: str | None = None,
         compression_opts: Any = None,
@@ -195,7 +196,7 @@ class NexusFile:
 
 
 def create_field(
-    dtype: str | type | None = None,
+    dtype: npt.DTypeLike | None = None,
     shape: Shape | None = None,
     compression: str | None = None,
     compression_opts: Any = None,
