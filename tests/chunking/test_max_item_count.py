@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Duncan McDougall <duncan.mcdougall@rfi.ac.uk>
 #
 # SPDX-License-Identifier: Apache-2.0
+from typing import NamedTuple
 
 import math
 
@@ -9,7 +10,7 @@ from hypothesis import given, strategies as st
 import numpy as np
 
 from ms_nexus_tools.lib.chunker import Chunker
-import ms_nexus_tools.lib.chunker as chunker
+from ms_nexus_tools.lib.bounds import Shape
 
 from icecream import ic
 
@@ -99,3 +100,57 @@ def test_2_shared_priorities(n, count):
         chunker.chunk_count[2] == 1
     else:
         chunker.chunk_shape[2] >= count / (n * n)
+
+
+class MinChunksTestData(NamedTuple):
+    priorities: Shape
+    shape: Shape
+    min_chunks: Shape
+    count: int
+
+
+@st.composite
+def min_chunks(draw) -> MinChunksTestData:
+    priorities = (
+        draw(st.integers(min_value=1, max_value=3)),
+        draw(st.integers(min_value=1, max_value=3)),
+        draw(st.integers(min_value=1, max_value=3)),
+    )
+    shape = (
+        draw(st.integers(min_value=1, max_value=100)),
+        draw(st.integers(min_value=1, max_value=100)),
+        draw(st.integers(min_value=1, max_value=100)),
+    )
+    min_chunks = (
+        draw(st.integers(min_value=1, max_value=min(shape[0], 10))),
+        draw(st.integers(min_value=1, max_value=min(shape[1], 10))),
+        draw(st.integers(min_value=1, max_value=min(shape[2], 10))),
+    )
+    count = draw(st.integers(min_value=1, max_value=1000))
+    return MinChunksTestData(priorities, shape, min_chunks, count)
+
+
+@given(min_chunks())
+def test_min_chunks(opts: MinChunksTestData):
+    chunker = Chunker.from_max_item_count(
+        data_shape=opts.shape,
+        priorities=opts.priorities,
+        items_per_chunk=opts.count,
+        min_chunk_count=opts.min_chunks,
+    )
+
+    if np.prod(chunker.data_shape) >= opts.count:
+        assert np.prod(chunker.chunk_shape) <= opts.count
+
+    for i in range(3):
+        # Basic minimum check
+        assert chunker.chunk_count[i] >= opts.min_chunks[i]
+
+        # Basic requirement: chunks cover data
+        assert chunker.chunk_shape[i] * chunker.chunk_count[i] >= chunker.data_shape[i]
+
+        # Optimality cirteria: chunks are not superfulously large
+        assert (
+            chunker.chunk_shape[i] * (chunker.chunk_count[i] - 1)
+            < chunker.data_shape[i]
+        )

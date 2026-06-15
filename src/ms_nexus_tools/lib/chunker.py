@@ -55,7 +55,8 @@ class Chunker:
     def from_max_item_count(
         data_shape: Shape,
         priorities: Shape,
-        items_per_chunk: int | None,
+        items_per_chunk: int,
+        min_chunk_count: Shape | None = None,
     ) -> "Chunker":
         """
         Returns chunking where each chunk has at most item_per_chunk items.
@@ -74,23 +75,42 @@ class Chunker:
         chunker.priorities = priorities
         chunker.n_dims = len(chunker.data_shape)
 
+        min_chunk_count = (
+            min_chunk_count
+            if min_chunk_count is not None
+            else tuple(1 for _ in data_shape)
+        )
+
         chunker.chunk_shape, chunker.chunk_count = chunker._calculate_from_max_count(
-            items_per_chunk
+            items_per_chunk, min_chunk_count
         )
         chunker.n_chunks = int(np.prod(chunker.chunk_count))
         chunker.chunk_items = int(np.prod(chunker.chunk_shape))
         return chunker
 
-    def _calculate_from_max_count(self, max_items_per_chunk) -> tuple[Shape, Shape]:
+    def _calculate_from_max_count(
+        self, max_items_per_chunk: int, min_chunk_count: Shape
+    ) -> tuple[Shape, Shape]:
 
-        chunk_shape = [1 for _ in self.priorities]
+        min_chunk_count = tuple(
+            min(m, self.data_shape[i]) for i, m in enumerate(min_chunk_count)
+        )
+        min_chunk_shape = [
+            (self.data_shape[d] // min_chunk_count[d])
+            for d in range(len(self.priorities))
+        ]
+        chunk_shape = [c for c in min_chunk_shape]
 
         remaining_count = max_items_per_chunk
         for dimensions, remaining in _count_priorities(self.priorities):
             n_dims = len(dimensions)
-            capacity = np.prod([self.data_shape[i] for i in dimensions])
+            capacity = np.prod(
+                [(self.data_shape[i] // min_chunk_count[i]) for i in dimensions]
+            )
             if capacity > remaining_count:
-                dim_data_shape = np.array([self.data_shape[d] for d in dimensions])
+                dim_data_shape = np.array(
+                    [(self.data_shape[d] // min_chunk_count[d]) for d in dimensions]
+                )
                 min_dim = np.min(dim_data_shape)
                 weightings = dim_data_shape / min_dim
 
@@ -112,7 +132,7 @@ class Chunker:
                     chunk_shape[d] = math.ceil(chunk_shape[d])
             else:
                 for d in dimensions:
-                    chunk_shape[d] = self.data_shape[d]
+                    chunk_shape[d] = self.data_shape[d] // min_chunk_count[d]
 
             remaining_count = max(remaining_count / capacity, 1)
 

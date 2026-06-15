@@ -75,6 +75,59 @@ def test_itmes_matched_priorities():
     assert chunker.chunk_count == (20, 20, 20)
 
 
+def test_itmes_min_chunk_count():
+
+    chunker = Chunker.from_max_item_count(
+        data_shape=(100, 100, 100),
+        priorities=(1, 2, 3),
+        items_per_chunk=10,
+        min_chunk_count=(2, 2, 2),
+    )
+
+    assert chunker.chunk_shape == (10, 1, 1)
+    assert chunker.chunk_count == (10, 100, 100)
+
+    chunker = Chunker.from_max_item_count(
+        data_shape=(100, 100, 100),
+        priorities=(1, 2, 3),
+        items_per_chunk=200,
+        min_chunk_count=(2, 2, 2),
+    )
+
+    assert chunker.chunk_shape == (50, 4, 1)
+    assert chunker.chunk_count == (2, 25, 100)
+
+    chunker = Chunker.from_max_item_count(
+        data_shape=(10, 10, 10),
+        priorities=(1, 2, 3),
+        items_per_chunk=1000,
+        min_chunk_count=(2, 2, 2),
+    )
+
+    assert chunker.chunk_shape == (5, 5, 5)
+    assert chunker.chunk_count == (2, 2, 2)
+
+    chunker = Chunker.from_max_item_count(
+        data_shape=(10, 10, 10),
+        priorities=(1, 2, 3),
+        items_per_chunk=5,
+        min_chunk_count=(2, 2, 2),
+    )
+
+    assert chunker.chunk_shape == (5, 1, 1)
+    assert chunker.chunk_count == (2, 10, 10)
+
+    chunker = Chunker.from_max_item_count(
+        data_shape=(10, 10, 10),
+        priorities=(1, 2, 3),
+        items_per_chunk=5,
+        min_chunk_count=(11, 2, 2),
+    )
+
+    assert chunker.chunk_shape == (1, 5, 1)
+    assert chunker.chunk_count == (10, 2, 10)
+
+
 def test_count_overflow():
 
     chunker = Chunker.from_min_chunks(
