@@ -82,6 +82,45 @@ def test_bounds(a, b, c, x, y, z, count):
 
 
 @given(
+    st.integers(min_value=1, max_value=3),
+    st.integers(min_value=1, max_value=3),
+    st.integers(min_value=1, max_value=3),
+    st.integers(min_value=1, max_value=100),
+    st.integers(min_value=1, max_value=100),
+    st.integers(min_value=1, max_value=100),
+    st.integers(min_value=1, max_value=1000),
+)
+def test_normalise(a, b, c, x, y, z, count):
+    chunker = Chunker.from_max_item_count(
+        data_shape=(x, y, z), priorities=(a, b, c), items_per_chunk=count
+    )
+    chunker.normalise()
+
+    if np.prod(chunker.data_shape) >= count:
+        assert np.prod(chunker.chunk_shape) <= count
+
+    for i in range(3):
+        # Basic requirement: chunks cover data
+        assert chunker.chunk_shape[i] * chunker.chunk_count[i] >= chunker.data_shape[i]
+
+        # Optimality cirteria: chunks are not superfulously large
+        assert (
+            chunker.chunk_shape[i] * (chunker.chunk_count[i] - 1)
+            < chunker.data_shape[i]
+        )
+
+        for j in range(i + 1, 3):
+            if chunker.priorities[i] < chunker.priorities[j]:
+                if chunker.data_shape[i] >= chunker.data_shape[j]:
+                    if count > chunker.data_shape[j]:
+                        assert chunker.chunk_shape[i] >= chunker.chunk_shape[j]
+            elif chunker.priorities[i] > chunker.priorities[j]:
+                if chunker.data_shape[i] <= chunker.data_shape[j]:
+                    if count > chunker.data_shape[i]:
+                        assert chunker.chunk_shape[i] <= chunker.chunk_shape[j]
+
+
+@given(
     st.integers(min_value=1, max_value=100),
     st.integers(min_value=1, max_value=1000000),
 )

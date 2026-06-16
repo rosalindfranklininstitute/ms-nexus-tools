@@ -353,6 +353,17 @@ class Chunker:
     def __repr__(self) -> str:
         return f"data: {self.data_shape} p: {self.priorities} cshape: {self.chunk_shape} ccount: {self.chunk_count}"
 
+    def normalise(self):
+        """
+        Changes the chunk shape so that the variation in chunk size is lower.
+        i.e. The number of chunks to cover the data is the same,
+        but the size of the chunks is more uniform.
+        That is chunk_shape = data_shape/chunk_count.
+        """
+        self.chunk_shape = tuple(
+            math.ceil(ds / cs) for ds, cs in zip(self.data_shape, self.chunk_count)
+        )
+
     def _chunk(self, dimension: int, count: int) -> slice:
         assert count * self.chunk_shape[dimension] < self.data_shape[dimension]
         return slice(

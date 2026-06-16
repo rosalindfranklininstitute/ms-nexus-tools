@@ -225,6 +225,20 @@ def test_chunks():
     assert np.sum(flags) == np.prod(chunker.data_shape)
 
 
+def test_normalise():
+
+    chunker = Chunker.from_max_item_count(
+        data_shape=(10, 10, 10), priorities=(1, 1, 2), items_per_chunk=49
+    )
+
+    assert chunker.chunk_shape == (7, 7, 1)
+    assert chunker.chunk_count == (2, 2, 10)
+
+    chunks = chunker.normalise()
+    assert chunker.chunk_shape == (5, 5, 1)
+    assert chunker.chunk_count == (2, 2, 10)
+
+
 def test_bulk_chunks():
 
     chunker = Chunker.from_max_item_count(
