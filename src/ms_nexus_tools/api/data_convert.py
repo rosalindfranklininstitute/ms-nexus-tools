@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from ms_nexus_tools.lib.dtypes import Int1Dp
 
-from typing import Any, reveal_type
+from typing import Any, reveal_type, Iterable, Generator
 from threading import Lock, local
 import concurrent.futures as cfutures
 from dataclasses import dataclass, field
@@ -81,17 +81,93 @@ class ProcessArgs(
         default=FieldOptions(
             compression=hdf5plugin.Blosc(),
             compression_opts=None,
-            max_bytes_per_chunk=1024 * 1024 * 8,
+            max_bytes_per_chunk=-1,
             shuffle=True,
         )
     )
 
+    chunk_max_byte_count: int = no_arg_field(default=1024 * 1024 * 8)  # 8Mb
     memory_max_byte_count: int = no_arg_field(default=1024 * 1024 * 1024 * 4)  # 1Gb
 
 
-def provision_subentries(
-    nxs: NexusFile, args: ProcessArgs, full_shape: Shape, sparse: bool
-) -> dict[str, Chunker]:
+class DataChunks:
+    def __init__(
+        self,
+        names: Iterable[str],
+        chunkers: Iterable[Chunker],
+        dtypes: Iterable[npt.DTypeLike],
+    ):
+        self.names: set[str] = set([n for n in names])
+        self.chunkers: dict[str, Chunker] = {
+            name: chunker for name, chunker in zip(names, chunkers, strict=True)
+        }
+        self.dtypes: dict[str, npt.DTypeLike] = {
+            name: tpe for name, tpe in zip(names, dtypes, strict=True)
+        }
+
+    @staticmethod
+    def from_dict(data: dict[str, tuple[Chunker, npt.DTypeLike]]) -> "DataChunks":
+        names = set(data.keys())
+        chunkers = [c[0] for c in data.values()]
+        dtypes = [c[1] for c in data.values()]
+        return DataChunks(names, chunkers, dtypes)
+
+    def __setitem__(self, name: str, data: tuple[Chunker, npt.DTypeLike]) -> None:
+        self.names.add(name)
+        self.chunkers[name] = data[0]
+        self.dtypes[name] = data[1]
+
+    def __repr__(self) -> str:
+        return ",\n".join(
+            [f"{name} ({dtype}): {chunker}" for name, chunker, dtype in self.items()]
+        )
+
+    def chunker(self, name: str) -> Chunker:
+        return self.chunkers[name]
+
+    def dtype(self, name: str) -> npt.DTypeLike:
+        return self.dtypes[name]
+
+    def items(self) -> Generator[tuple[str, Chunker, npt.DTypeLike]]:
+        for name in self.names:
+            yield name, self.chunker(name), self.dtype(name)
+
+
+def choose_memory_buffer(
+    args: ProcessArgs,
+    max_item_count: int,
+    density: float,
+    data_chunks: DataChunks,
+) -> tuple[Chunker, int]:
+    memory_chunks = {
+        name: Chunker.find_chunk_multiple(
+            chunker.data_shape,
+            chunker.chunk_shape,
+            max_item_count / density,
+        )
+        for name, chunker, _ in data_chunks.items()
+    }
+
+    min_read_count = np.pow(2, 32, dtype=np.int64)
+    min_read_name = ""
+    for name, chunker in memory_chunks.items():
+        chunker.normalise()
+        read_count = 0
+        for chunk in chunker.chunks():
+            read_count += args.data_source.chunk_read_count(chunk.shape)
+        if read_count < min_read_count:
+            min_read_count = read_count
+            min_read_name = name
+    assert len(min_read_name) > 0
+
+    return memory_chunks[min_read_name], min_read_count
+
+
+def choose_memory_buffer_and_data_chunks(
+    args: ProcessArgs,
+    full_shape: Shape,
+    density: float,
+) -> tuple[Chunker, int, int, DataChunks]:
     data_priorities = args.data_source.output_chunks()
     if len(data_priorities) == 0:
         raise ValueError("At least one dataset must be provided.")
@@ -104,32 +180,76 @@ def provision_subentries(
             raise ValueError(
                 f"An invalid set of priorities was returned for dataset {name}: there should be {len(full_shape)} items, but only {len(priorities)} were provided."
             )
-    signal_item_width = np.dtype(args.data_source.signal_type()).itemsize
-    data_chunks = {
-        name: Chunker.from_max_item_count(
-            data_shape=full_shape,
-            priorities=priorities,
-            items_per_chunk=int(
-                args.field_options.max_bytes_per_chunk / signal_item_width
-            ),
-        )
-        for name, priorities in data_priorities.items()
+    signal_type = args.data_source.signal_type()
+    signal_item_width = np.dtype(signal_type).itemsize
+    data_max_items = {
+        name: int(args.field_options.max_bytes_per_chunk / signal_item_width)
+        for name in data_priorities.keys()
     }
-    if sparse:
-        counts_item_width = np.dtype(np.uint16).itemsize
-        data_chunks[_count_subentry_name()] = Chunker.from_max_item_count(
-            data_shape=full_shape,
-            priorities=tuple(1 for _ in full_shape),
-            items_per_chunk=int(
-                args.field_options.max_bytes_per_chunk / counts_item_width
+
+    data_chunks = DataChunks([], [], [])
+
+    for name, priorities in data_priorities.items():
+        data_chunks[name] = (
+            Chunker.from_max_item_count(
+                data_shape=full_shape,
+                priorities=priorities,
+                items_per_chunk=data_max_items[name],
             ),
+            signal_type,
         )
 
-    for name, chunker in data_chunks.items():
+    if sparse:
+        counts_item_width = np.dtype(np.uint16).itemsize
+        data_max_items[_count_subentry_name()] = int(
+            args.field_options.max_bytes_per_chunk / counts_item_width
+        )
+        data_chunks[_count_subentry_name()] = (
+            Chunker.from_max_item_count(
+                data_shape=full_shape,
+                priorities=tuple(1 for _ in full_shape),
+                items_per_chunk=data_max_items[_count_subentry_name()],
+            ),
+            np.uint16,
+        )
+
+    axis_definitions = args.data_source.axis_definitions()
+    size_per_item = signal_item_width + np.sum(
+        [
+            np.dtype(ax.dtype).itemsize
+            for ax in axis_definitions
+            if ax.density == AxisDensity.SPARSE
+        ]
+    )
+    memory_max_item_count = int(args.memory_max_byte_count / size_per_item)
+    memory_chunks, total_read_count = choose_memory_buffer(
+        args, memory_max_item_count, density, data_chunks
+    )
+    for name, chunker, dtype in data_chunks.items():
+        data_chunks[name] = (
+            Chunker.from_max_item_count(
+                data_shape=chunker.data_shape,
+                priorities=chunker.priorities,
+                items_per_chunk=data_max_items[name],
+                min_chunk_count=memory_chunks.chunk_count,
+            ),
+            dtype,
+        )
+
+    return memory_chunks, total_read_count, size_per_item, data_chunks
+
+
+def provision_subentries(
+    nxs: NexusFile,
+    args: ProcessArgs,
+    data_chunks: DataChunks,
+) -> None:
+
+    for name, chunker, dtype in data_chunks.items():
         nxs.root[name] = NXsubentry(
             NXdata(
                 signal=create_field(
-                    dtype=args.data_source.signal_type(),
+                    dtype=dtype,
                     shape=chunker.data_shape,
                     compression=args.field_options.compression,
                     compression_opts=args.field_options.compression_opts,
@@ -139,43 +259,17 @@ def provision_subentries(
                 )
             )
         )
-    return data_chunks
-
-
-def choose_memory_buffer(
-    args: ProcessArgs,
-    max_item_count: int,
-    density: float,
-    data_chunks: dict[str, Chunker],
-) -> tuple[Chunker, int]:
-    memory_chunks = {
-        name: Chunker.find_chunk_multiple(
-            chunker.data_shape,
-            chunker.chunk_shape,
-            max_item_count / density,
-        )
-        for name, chunker in data_chunks.items()
-    }
-    min_read_count = np.pow(2, 32, dtype=np.int64)
-    min_read_name = ""
-    for name, chunker in memory_chunks.items():
-        read_count = 0
-        for chunk in chunker.chunks():
-            read_count += args.data_source.chunk_read_count(chunk.shape)
-        if read_count < min_read_count:
-            min_read_count = read_count
-            min_read_name = name
-    assert len(min_read_name) > 0
-    return memory_chunks[min_read_name], min_read_count
 
 
 def provision_data_axis(
-    nxs: NexusFile, args: ProcessArgs, data_chunks: dict[str, Chunker]
+    nxs: NexusFile,
+    args: ProcessArgs,
+    data_chunks: DataChunks,
 ) -> tuple[dict[str, Axis], bool]:
     axis_definitions = args.data_source.axis_definitions()
 
     any_sparse_axis = False
-    for entry_name, chunker in data_chunks.items():
+    for entry_name, chunker, _ in data_chunks.items():
         # NOTE: Assumption: Only one axis per dimension.
         if len(axis_definitions) != len(chunker.data_shape):
             raise ValueError("Currently only one axis per dimension is supported.")
@@ -382,13 +476,13 @@ def write_data(
     full_shape: Shape,
     sparse_axis: list[Axis],
     chunk_data: np.ndarray | MultiCOO,
-    data_chunks: dict[str, Chunker],
+    data_chunks: DataChunks,
 ) -> tuple[np.ndarray | None] | tuple[sparse.COO, sparse.COO]:
     if len(sparse_axis) == 0:
         if not isinstance(chunk_data, np.ndarray):
             raise ValueError("Data is not sparse, expected a full block of data.")
 
-        for data_entry in data_chunks:
+        for data_entry in data_chunks.names:
             assert data_entry != _count_subentry_name()
             nxs.root[data_entry].data.signal[*memory_chunk] = chunk_data
         return chunk_data, None
@@ -441,7 +535,7 @@ def write_data(
 
         axis = sparse_axis[0]
 
-        for data_entry, data_chunker in data_chunks.items():
+        for data_entry, data_chunker, _ in data_chunks.items():
             cbounds = ContainedBounds.from_chunk(data_chunker.data_shape, memory_chunk)
 
             chunk_edges = cbounds.chunk_edges(data_chunker.chunk_shape)
@@ -463,7 +557,10 @@ def write_data(
 
             # This is true where two coords are NOT adjacent.
             # Note that this assumes the coords array is flattened and sorted, so that you cannot zig zag through the data.
-            is_adjacent = np.sum(np.abs(np.diff(coords, axis=1)), axis=0) != 1
+            # is_adjacent = np.sum(np.abs(np.diff(coords, axis=1)), axis=0) != 1
+
+            is_adjacent = np.diff(coords[-1, :]) != 1
+
             adjacent = np.argwhere(is_adjacent).flatten()
             adjacent = np.concatenate([[0], adjacent + 1])
 
@@ -527,6 +624,16 @@ def accumulate_data(
 def process(args: ProcessArgs, config: dict[str, Any] = {}):
     assert args.in_path.exists(), f"The input file {args.in_path} was not found"
 
+    if args.field_options.max_bytes_per_chunk <= 0:
+        args.field_options = FieldOptions(
+            compression=args.field_options.compression,
+            compression_opts=args.field_options.compression_opts,
+            max_bytes_per_chunk=args.chunk_max_byte_count,
+            shuffle=args.field_options.shuffle,
+        )
+    else:
+        assert args.field_options.max_bytes_per_chunk == args.chunk_max_byte_count
+
     nxs = NexusFile(args.out_path, mode="w")
     with nxs.as_context():
         for key, value in args.data_source.instrament_metadata().items():
@@ -538,19 +645,15 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
         full_shape, density = args.data_source.shape()
         print(f" Giving a final data shape of {full_shape}")
 
-        data_chunks = provision_subentries(nxs, args, full_shape, density != 1.0)
+        memory_chunks, total_read_count, size_per_item, data_chunks = (
+            choose_memory_buffer_and_data_chunks(args, full_shape, density)
+        )
+
+        provision_subentries(nxs, args, data_chunks)
+
         axis_definitions, any_sparse_axis = provision_data_axis(nxs, args, data_chunks)
 
         signal_width = np.dtype(args.data_source.signal_type()).itemsize
-        size_per_item = signal_width + np.sum(
-            [np.dtype(ax.dtype).itemsize for ax in axis_definitions.values()]
-        )
-
-        memory_max_item_count = int(args.memory_max_byte_count / size_per_item)
-
-        memory_chunks, total_read_count = choose_memory_buffer(
-            args, memory_max_item_count, density, data_chunks
-        )
 
         accumulations, count_accumulations = provision_accumulation_subentries(
             nxs, args, full_shape, axis_definitions
@@ -574,12 +677,8 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
         print(
             f"maximum chunk size ({format_bytes(args.field_options.max_bytes_per_chunk)})"
         )
-        for name, chunker in data_chunks.items():
-            width = (
-                np.dtype(np.uint16).itemsize
-                if name == _count_subentry_name()
-                else signal_width
-            )
+        for name, chunker, dtype in data_chunks.items():
+            width = np.dtype(dtype).itemsize
             print(
                 f"    {name: >10}: chunk shape {chunker.chunk_shape} and total count {chunker.chunk_count} and memory count {count_chunks_to_cover(memory_chunks.chunk_shape, chunker.chunk_shape)}."
             )
