@@ -41,6 +41,8 @@ def print_nx_data_stats():
                 print(
                     f" Shape: {shape} giving {total_items} items ({dtype} giving {format_bytes(total_items * width)})"
                 )
-                print(f" Chunk shape {chunks} and count {count}")
+                print(
+                    f" Chunk shape {chunks} and count {count} ({format_bytes(np.prod(chunks) * width)})"
+                )
                 print(f" Total chunks {total_chunks}, of which {n} were used.")
                 print(f" Density {n / total_chunks:.2f}")
