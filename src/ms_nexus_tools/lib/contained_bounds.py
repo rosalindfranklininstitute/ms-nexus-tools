@@ -83,6 +83,15 @@ class ContainedBounds:
         )
 
     def inner_chunk(self, outer_chunk: Chunk) -> Chunk:
+        """
+        Returns the equivalent slice into the inner chunk for the given outer chunk.
+        >>> cbounds = ContainedBounds.from_chunk(
+        ...     (100,100,100),
+        ...     [slice(10,20), slice(20,30), slice(30,40)],
+        ... )
+        >>> cbounds.inner_chunk(Chunk([slice(10,15), slice(20,25), slice(30,35)]))
+        (0:5, 0:5, 0:5)
+        """
         assert len(outer_chunk) == self.dimensions
 
         return Chunk(
@@ -114,6 +123,15 @@ class ContainedBounds:
         ]
 
     def outer_chunk(self, inner_chunk: Chunk) -> Chunk:
+        """
+        Returns the equivalent slice into the outer chunk for the given inner chunk.
+        >>> cbounds = ContainedBounds.from_chunk(
+        ...     (100,100,100),
+        ...     [slice(10,20), slice(20,30), slice(30,40)],
+        ... )
+        >>> cbounds.outer_chunk(Chunk([slice(0,5), slice(0,5), slice(0,5)]))
+        (10:15, 20:25, 30:35)
+        """
         return Chunk(
             [
                 slice(s, e)

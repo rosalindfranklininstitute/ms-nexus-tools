@@ -38,7 +38,14 @@ from ..lib.data_source import (
 from ..lib.bounds import Chunk, Shape
 from ..lib import ContainedBounds
 from ..lib.chunker import Chunker, count_chunks_to_cover
-from ..lib.nxs import NexusFile, FieldOptions, NxAxis, create_field, NxAxes
+from ..lib.nxs import (
+    NexusFile,
+    FieldOptions,
+    NxAxis,
+    create_field,
+    NxAxes,
+    create_group,
+)
 from ..lib.utils import format_bytes
 
 
@@ -75,6 +82,18 @@ class ProcessArgs(
         type=FilePathType(must_exist=False),
     )
 
+    chunk_max_byte_count: int = arg_field(
+        "--chunk-bytes",
+        help="The maximum number of bytes of a chunk in the output file.",
+        default=1024 * 1024 * 8,
+    )  # 8Mb
+
+    memory_max_byte_count: int = arg_field(
+        "--memory-bytes",
+        help="The maximum number of bytes to use as the memory buffer. Each thread uses this much memory.",
+        default=1024 * 1024 * 1024 * 4,
+    )
+
     data_source: AbstractDataSource = no_arg_field(default=None)
 
     field_options: FieldOptions = no_arg_field(
@@ -85,9 +104,6 @@ class ProcessArgs(
             shuffle=True,
         )
     )
-
-    chunk_max_byte_count: int = no_arg_field(default=1024 * 1024 * 8)  # 8Mb
-    memory_max_byte_count: int = no_arg_field(default=1024 * 1024 * 1024 * 4)  # 1Gb
 
 
 class DataChunks:
@@ -199,7 +215,8 @@ def choose_memory_buffer_and_data_chunks(
             signal_type,
         )
 
-    if sparse:
+    axis_definitions = args.data_source.axis_definitions()
+    if any([ax.density == AxisDensity.SPARSE for ax in axis_definitions]):
         counts_item_width = np.dtype(np.uint16).itemsize
         data_max_items[_count_subentry_name()] = int(
             args.field_options.max_bytes_per_chunk / counts_item_width
@@ -213,7 +230,6 @@ def choose_memory_buffer_and_data_chunks(
             np.uint16,
         )
 
-    axis_definitions = args.data_source.axis_definitions()
     size_per_item = signal_item_width + np.sum(
         [
             np.dtype(ax.dtype).itemsize
@@ -349,10 +365,13 @@ class Accumulation:
     def add(self, data: np.ndarray | sparse.COO, chunk: Chunk):
         sub_chunk = Chunk([chunk[ii] for ii in range(data.ndim) if ii not in self.axis])
 
-        max_data = np.maximum(
-            self.max_data[*sub_chunk], data[*chunk].max(axis=self.axis)
-        )
-        sum_data = np.add(self.sum_data[*sub_chunk], data[*chunk].sum(axis=self.axis))
+        if isinstance(data, sparse.COO):
+            sub_data = data[*chunk]
+        else:
+            sub_data = data
+
+        max_data = np.maximum(self.max_data[*sub_chunk], sub_data.max(axis=self.axis))
+        sum_data = np.add(self.sum_data[*sub_chunk], sub_data.sum(axis=self.axis))
 
         if isinstance(max_data, sparse.COO):
             self.max_data[*sub_chunk] = max_data.todense()
@@ -391,6 +410,7 @@ def provision_accumulation_subentries(
                 )
             ]
         )
+        has_sparse_axis = False
         for ax_name, ax in axis_definitions.items():
             if ax_name in axes:
                 axis.append(ax.primary_axis)
@@ -403,6 +423,7 @@ def provision_accumulation_subentries(
                     case AxisDensity.SPARSE:
                         values = args.data_source.sparse_axis_edges(ax)[1:]
                         edges.append(values)
+                        has_sparse_axis = True
                 acc_shape.append(len(values))
                 nx_axis = NxAxis.create(
                     values=values,
@@ -414,13 +435,6 @@ def provision_accumulation_subentries(
 
         final_accumulations[name] = Accumulation(
             name=name,
-            axis=tuple(axis),
-            axis_edges=edges,
-            shape=Shape(acc_shape),
-        )
-        counts_name = f"{_count_subentry_name()}_{name}"
-        count_accumulations[counts_name] = Accumulation(
-            name=counts_name,
             axis=tuple(axis),
             axis_edges=edges,
             shape=Shape(acc_shape),
@@ -439,21 +453,29 @@ def provision_accumulation_subentries(
                 )
             )
         )
-        nxs.root[counts_name] = NXsubentry(
-            NXdata(
-                signal=create_field(
-                    dtype=np.uint16,
-                    shape=(2, *acc_shape),
-                    compression=args.field_options.compression,
-                    compression_opts=args.field_options.compression_opts,
-                    chunks=None,
-                    shuffle=args.field_options.shuffle,
-                    fillvalue=0,
+        group_axes.add_to_group(nxs.root[name]["data"])
+        if has_sparse_axis:
+            counts_name = f"{_count_subentry_name()}_{name}"
+            count_accumulations[counts_name] = Accumulation(
+                name=counts_name,
+                axis=tuple(axis),
+                axis_edges=edges,
+                shape=Shape(acc_shape),
+            )
+            nxs.root[counts_name] = NXsubentry(
+                NXdata(
+                    signal=create_field(
+                        dtype=np.uint16,
+                        shape=(2, *acc_shape),
+                        compression=args.field_options.compression,
+                        compression_opts=args.field_options.compression_opts,
+                        chunks=None,
+                        shuffle=args.field_options.shuffle,
+                        fillvalue=0,
+                    )
                 )
             )
-        )
-        group_axes.add_to_group(nxs.root[name]["data"])
-        group_axes.add_to_group(nxs.root[counts_name]["data"])
+            group_axes.add_to_group(nxs.root[counts_name]["data"])
 
     return final_accumulations, count_accumulations
 
@@ -621,6 +643,16 @@ def accumulate_data(
                 progress.update()
 
 
+def add_items_to_group(items: dict[str, Any], root):
+    for key, value in items.items():
+        if isinstance(value, dict):
+            if key not in root:
+                root[key] = create_group()
+            add_items_to_group(value, root[key])
+        else:
+            root.attrs[key] = value
+
+
 def process(args: ProcessArgs, config: dict[str, Any] = {}):
     assert args.in_path.exists(), f"The input file {args.in_path} was not found"
 
@@ -636,14 +668,10 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
 
     nxs = NexusFile(args.out_path, mode="w")
     with nxs.as_context():
-        for key, value in args.data_source.instrament_metadata().items():
-            nxs.instrument.attrs[key] = value
-        for key, value in args.data_source.experiment_metadata().items():
-            nxs.experiment.attrs[key] = value
+        add_items_to_group(args.data_source.instrament_metadata(), nxs.instrument)
+        add_items_to_group(args.data_source.experiment_metadata(), nxs.experiment)
 
-        print(f"Processing file {args.in_path} and writing results to {args.out_path}")
         full_shape, density = args.data_source.shape()
-        print(f" Giving a final data shape of {full_shape}")
 
         memory_chunks, total_read_count, size_per_item, data_chunks = (
             choose_memory_buffer_and_data_chunks(args, full_shape, density)
@@ -662,6 +690,11 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
         sparse_axis = [
             ax for ax in axis_definitions.values() if ax.density == AxisDensity.SPARSE
         ]
+
+        print(f"Processing file {args.in_path} and writing results to {args.out_path}")
+        print(
+            f" Giving a final data shape of {full_shape} (Raw {format_bytes(np.prod(full_shape) * size_per_item)})"
+        )
 
         print(
             f"Using a memory chunk shape {memory_chunks.chunk_shape} and count {memory_chunks.chunk_count}."
