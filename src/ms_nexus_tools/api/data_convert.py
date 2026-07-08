@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Duncan McDougall <duncan.mcdougall@rfi.ac.uk>
 #
 # SPDX-License-Identifier: Apache-2.0
-from ms_nexus_tools.lib.dtypes import Int1Dp
+from ms_nexus_tools.lib.dtypes import Intp1D, Bool1D
 
 from typing import Any, reveal_type, Iterable, Generator
 from threading import Lock, local
@@ -280,16 +280,16 @@ def provision_subentries(
 def provision_data_axis(
     nxs: NexusFile,
     args: ProcessArgs,
+    full_shape: Shape,
     data_chunks: DataChunks,
 ) -> tuple[dict[str, Axis], bool]:
     axis_definitions = args.data_source.axis_definitions()
 
     any_sparse_axis = False
     for entry_name, chunker, _ in data_chunks.items():
-        # NOTE: Assumption: Only one axis per dimension.
-        if len(axis_definitions) != len(chunker.data_shape):
-            raise ValueError("Currently only one axis per dimension is supported.")
         group_axes = NxAxes()
+        for _ in full_shape:
+            group_axes.append([])
         for axis in axis_definitions:
             match axis.density:
                 case AxisDensity.CONTINUOUS:
@@ -298,19 +298,28 @@ def provision_data_axis(
                             "A continuouse axis should not have secondary axis."
                         )
                     values = args.data_source.continuous_axis_values(axis)
+                    if len(values) != full_shape[axis.primary_axis]:
+                        raise ValueError(
+                            f"Expected {full_shape[axis.primary_axis]} values for {axis.name} but recived {len(values)}."
+                        )
                     nx_axis = NxAxis.create(
                         values=values,
                         name=axis.name,
                         indices=[axis.primary_axis],
                         unit=axis.units,
                     )
-                    group_axes.append([nx_axis])
+                    group_axes[axis.primary_axis].append(nx_axis)
                 case AxisDensity.SPARSE:
                     any_sparse_axis = True
                     all_axis: list[int] = sorted(
                         [axis.primary_axis, *axis.secondary_axes]
                     )
                     values = args.data_source.sparse_axis_edges(axis)[1:]
+                    if len(values) != full_shape[axis.primary_axis]:
+                        raise ValueError(
+                            f"Expected {full_shape[axis.primary_axis] + 1} edges for {axis.name} but recived {len(values) + 1}."
+                        )
+
                     nx_axis = NxAxis.create(
                         values=values,
                         name=axis.name,
@@ -328,7 +337,7 @@ def provision_data_axis(
                         dtype=axis.dtype,
                         fillvalue=np.nan,
                     )
-                    group_axes.append([nx_axis, nx_axis_exact])
+                    group_axes[axis.primary_axis].extend([nx_axis, nx_axis_exact])
                 case _:
                     raise ValueError(f"Unknown Axis density: {axis.density}")
         group_axes.add_to_group(nxs.root[entry_name]["data"])
@@ -395,11 +404,8 @@ def provision_accumulation_subentries(
     final_accumulations: dict[str, Accumulation] = {}
     count_accumulations: dict[str, Accumulation] = {}
 
-    # NOTE: Assumption: an axis only defines 1 dimension.
-    for name, axes in accumulations.items():
-        count = 0
-        axis = []
-        acc_shape = []
+    for ac_name, axes in accumulations.items():
+        axis_to_accumulate: Bool1D = np.full(shape=(len(shape),), fill_value=False)
         edges = []
 
         group_axes = NxAxes()
@@ -411,11 +417,18 @@ def provision_accumulation_subentries(
             ]
         )
         has_sparse_axis = False
+
         for ax_name, ax in axis_definitions.items():
             if ax_name in axes:
-                axis.append(ax.primary_axis)
-                count += 1
-            else:
+                axis_to_accumulate[ax.primary_axis] = True
+
+        final_dim = np.sum(axis_to_accumulate == False)
+        acc_shape: Intp1D = np.zeros((final_dim,), dtype=np.intp)
+        for _ in range(final_dim):
+            group_axes.append([])
+
+        for ax_name, ax in axis_definitions.items():
+            if not axis_to_accumulate[ax.primary_axis]:
                 match ax.density:
                     case AxisDensity.CONTINUOUS:
                         values = args.data_source.continuous_axis_values(ax)
@@ -424,23 +437,34 @@ def provision_accumulation_subentries(
                         values = args.data_source.sparse_axis_edges(ax)[1:]
                         edges.append(values)
                         has_sparse_axis = True
-                acc_shape.append(len(values))
+                count = len(values)
+                new_index = ax.primary_axis - np.sum(
+                    axis_to_accumulate[0 : ax.primary_axis]
+                )
+                if acc_shape[new_index] == 0:
+                    acc_shape[new_index] = count
+                elif count != acc_shape[new_index]:
+                    raise ValueError(
+                        f"Found conflicting sizes for {new_index}. Initially set to {acc_shape[new_index]} now tring to set to {count}"
+                    )
+
                 nx_axis = NxAxis.create(
                     values=values,
                     name=ax.name,
-                    indices=[ax.primary_axis + 1 - count],
+                    indices=[new_index + 1],
                     unit=ax.units,
                 )
-                group_axes.append([nx_axis])
+                group_axes[new_index + 1].append(nx_axis)
 
-        final_accumulations[name] = Accumulation(
-            name=name,
-            axis=tuple(axis),
+        final_axis = tuple(ii for ii, aa in enumerate(axis_to_accumulate) if aa)
+        final_accumulations[ac_name] = Accumulation(
+            name=ac_name,
+            axis=final_axis,
             axis_edges=edges,
-            shape=Shape(acc_shape),
+            shape=Shape(acc_shape.tolist()),
         )
 
-        nxs.root[name] = NXsubentry(
+        nxs.root[ac_name] = NXsubentry(
             NXdata(
                 signal=create_field(
                     dtype=dtype,
@@ -453,14 +477,14 @@ def provision_accumulation_subentries(
                 )
             )
         )
-        group_axes.add_to_group(nxs.root[name]["data"])
+        group_axes.add_to_group(nxs.root[ac_name]["data"])
         if has_sparse_axis:
-            counts_name = f"{_count_subentry_name()}_{name}"
+            counts_name = f"{_count_subentry_name()}_{ac_name}"
             count_accumulations[counts_name] = Accumulation(
                 name=counts_name,
-                axis=tuple(axis),
+                axis=final_axis,
                 axis_edges=edges,
-                shape=Shape(acc_shape),
+                shape=Shape(acc_shape.tolist()),
             )
             nxs.root[counts_name] = NXsubentry(
                 NXdata(
@@ -481,7 +505,7 @@ def provision_accumulation_subentries(
 
 
 def _unique(coords, shape):
-    linear: Int1Dp = np.ravel_multi_index(coords, shape)
+    linear: Intp1D = np.ravel_multi_index(coords, shape)
     order = np.argsort(linear)
     linear = linear[order]
 
@@ -499,7 +523,7 @@ def write_data(
     sparse_axis: list[Axis],
     chunk_data: np.ndarray | MultiCOO,
     data_chunks: DataChunks,
-) -> tuple[np.ndarray | None] | tuple[sparse.COO, sparse.COO]:
+) -> tuple[np.ndarray, None] | tuple[sparse.COO, sparse.COO]:
     if len(sparse_axis) == 0:
         if not isinstance(chunk_data, np.ndarray):
             raise ValueError("Data is not sparse, expected a full block of data.")
@@ -572,19 +596,16 @@ def write_data(
             )
 
             coords = _unique(coords - 1, data_chunker.chunk_count) + 1
-            # coords = np.unique(coords, axis=1)
 
             unique_chunk_count = coords.shape[1]
             total_chunk_count = np.prod([len(edges) - 1 for edges in chunk_edges])
 
             # This is true where two coords are NOT adjacent.
-            # Note that this assumes the coords array is flattened and sorted, so that you cannot zig zag through the data.
-            # is_adjacent = np.sum(np.abs(np.diff(coords, axis=1)), axis=0) != 1
+            # Note: that this assumes the coords array is flattened and sorted, so that you cannot zig zag through the data.
+            is_not_adjacent = np.diff(coords[-1, :]) != 1
 
-            is_adjacent = np.diff(coords[-1, :]) != 1
-
-            adjacent = np.argwhere(is_adjacent).flatten()
-            adjacent = np.concatenate([[0], adjacent + 1])
+            adjacent = np.argwhere(is_not_adjacent).flatten()
+            adjacent = np.concatenate([[0], adjacent + 1, [coords.shape[1]]])
 
             starts = coords[:, adjacent[:-1]]
             ends = coords[:, adjacent[1:] - 1]
@@ -679,9 +700,9 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
 
         provision_subentries(nxs, args, data_chunks)
 
-        axis_definitions, any_sparse_axis = provision_data_axis(nxs, args, data_chunks)
-
-        signal_width = np.dtype(args.data_source.signal_type()).itemsize
+        axis_definitions, any_sparse_axis = provision_data_axis(
+            nxs, args, full_shape, data_chunks
+        )
 
         accumulations, count_accumulations = provision_accumulation_subentries(
             nxs, args, full_shape, axis_definitions

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Duncan McDougall <duncan.mcdougall@rfi.ac.uk>
 #
 # SPDX-License-Identifier: Apache-2.0
-from ms_nexus_tools.lib.dtypes import Any1D, Int1D32, Int1Dp
+from ms_nexus_tools.lib.dtypes import Any1D, Int1D32, Intp1D
 
 from contextlib import AbstractContextManager
 from typing import Any, Callable, NamedTuple, Sequence
@@ -16,6 +16,8 @@ import sparse
 
 from .bounds import Chunk, Shape
 from .exceptions import UnsupportedDataError
+
+from icecream import ic
 
 
 class AxisDensity(Enum):
@@ -65,11 +67,11 @@ class MultiCOO(NamedTuple):
         count=False,
         signal_acc: np.ufunc = np.add,
         axis_acc: np.ufunc | Sequence[np.ufunc] = np.maximum,
-    ) -> tuple["MultiCOO", Int1Dp]:
+    ) -> tuple["MultiCOO", Intp1D]:
         # Inspired by sparse.COO
         # See https://github.com/pydata/sparse/blob/main/LICENSE
         # This is the BSD 3-clause license
-        linear: Int1Dp = np.ravel_multi_index(self.coords, shape)
+        linear: Intp1D = np.ravel_multi_index(self.coords, shape)
         unique_mask = np.diff(linear) != 0
 
         counts = np.array([], dtype=np.intp)

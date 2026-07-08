@@ -1,0 +1,52 @@
+Source: https://ms.pngtree.com/freepng/8-bit-vector-pixel-art-character-illustration-8x8-px_7689877.html?__cf_chl_f_tk=FXD_49YdS6I5OOLx5w2ovOLbM0_2SFF5EQkLIxvogEI-1783435887-1.0.1.1-gtYnvLsod8Ldtkj1gUFzjz1zMu5WOzJ5vSPPmFM1I7Q
+Date: 2026/07/07
+Author: Wahyu Design Art
+
+Red: #EE161F
+Green: #2DBD0B
+Blue: #122BD9
+Yellow: #FCD301
+Skin: #E3B687
+Nose: #AB7D4F
+Foot: #8C5E39
+Eye: #0F0F0F
+
+Man1:
+__GGGG__
+__GGG_G_
+__SESE__
+__SSNS__
+_GBGGBG_
+_SBBBBS_
+__BBBB__
+__F__F__
+
+Man2:
+__BBBB__
+__BBB_B_
+__SESE__
+__SSNS__
+SBRBBRBS
+__RRRR__
+__RRRR__
+__F__F__
+
+Man3:
+__RRRR__
+__RRR_R_
+__SESE__
+_SSSNS__
+_RYRRYR_
+__YYYYS_
+__YYYY__
+__F__F__
+
+Man4
+__YYYY__
+__YYY_Y_
+__SESE__
+__SSNS__
+_YRYYRYS
+_SRRRR__
+__RRRR__
+__F__F__
