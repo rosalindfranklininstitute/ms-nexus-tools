@@ -437,6 +437,8 @@ def provision_accumulation_subentries(
                         values = args.data_source.sparse_axis_edges(ax)[1:]
                         edges.append(values)
                         has_sparse_axis = True
+                    case _:
+                        raise ValueError(f"Unknown Axis density: {ax.density}")
                 count = len(values)
                 new_index = ax.primary_axis - np.sum(
                     axis_to_accumulate[0 : ax.primary_axis]
@@ -445,7 +447,7 @@ def provision_accumulation_subentries(
                     acc_shape[new_index] = count
                 elif count != acc_shape[new_index]:
                     raise ValueError(
-                        f"Found conflicting sizes for {new_index}. Initially set to {acc_shape[new_index]} now tring to set to {count}"
+                        f"Found conflicting sizes for {new_index}. Initially set to {acc_shape[new_index]} now trying to set to {count}"
                     )
 
                 nx_axis = NxAxis.create(
@@ -632,7 +634,6 @@ def write_data(
                     signal_chunk = signal_data[*chunk]
 
                 axis_chunk = axis_data[*chunk]
-                signal_chunk = signal_data[*chunk]
                 assert signal_chunk.nnz != 0
                 assert axis_chunk.nnz != 0
                 assert axis_chunk.nnz == signal_chunk.nnz

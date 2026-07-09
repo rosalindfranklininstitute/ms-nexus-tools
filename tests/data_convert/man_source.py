@@ -67,6 +67,7 @@ class ManSource(AbstractDataSource):
         self,
         man_data: ManData,
         supplimentary_axes: list[Axis] = [],
+        mz_binning=1,
     ):
 
         self.man_data = man_data
@@ -88,6 +89,7 @@ class ManSource(AbstractDataSource):
             self.any_sparse |= axis.density == AxisDensity.SPARSE
         order = np.argsort(axis_primary)
         self.axis_order = [self.axis_order[oo] for oo in order]
+        self.mz_binning = mz_binning
 
     def __enter__(self):
         pass
@@ -112,16 +114,16 @@ class ManSource(AbstractDataSource):
         Return the shape of the data.
         """
         if self.any_sparse:
-            # shape = [0, 0, 0]
-            # for ax in self.axes.values():
-            #     if shape[ax.primary_axis] == 0:
-            #         ss = self.man_data.shape[ax.primary_axis]
-            #         if ax.density == AxisDensity.SPARSE:
-            #             shape[ax.primary_axis] = ss // 2
-            #         else:
-            #             shape[ax.primary_axis] = ss
-            # return DataShape(Shape(shape), self.man_data.density)
-            return DataShape(self.man_data.shape, self.man_data.density)
+            shape = [0, 0, 0]
+            for ax in self.axes.values():
+                if shape[ax.primary_axis] == 0:
+                    ss = self.man_data.shape[ax.primary_axis]
+                    if ax.density == AxisDensity.SPARSE:
+                        shape[ax.primary_axis] = ss // self.mz_binning
+                    else:
+                        shape[ax.primary_axis] = ss
+            return DataShape(Shape(shape), self.man_data.density)
+            # return DataShape(self.man_data.shape, self.man_data.density)
         else:
             return DataShape(self.man_data.shape, 1.0)
 
@@ -181,7 +183,11 @@ class ManSource(AbstractDataSource):
         elif self.axes[axis.name].density != AxisDensity.SPARSE:
             raise ValueError(f"Unknown sparse axis requested: {axis.name}")
         else:
-            return np.arange(self.man_data.shape[axis.primary_axis] + 1)
+            return np.arange(
+                0,
+                self.man_data.shape[axis.primary_axis] + self.mz_binning,
+                self.mz_binning,
+            )
 
     def output_accumulations(self) -> dict[str, tuple[str, ...]]:
         """
@@ -221,11 +227,18 @@ class ManSource(AbstractDataSource):
         """
         if self.any_sparse:
             mask = np.full((self.man_data.total_int.shape[0],), True)
-            for ii in range(3):
-                mask &= (self.man_data.total_pos[ii, :] >= memory_chunk[ii].start) & (
-                    self.man_data.total_pos[ii, :] < memory_chunk[ii].stop
-                )
+
+            # TODO: should this be moved into the data_converter? It is a standard part of all the sparse converters.
             pos = self.man_data.total_pos[:, :]
+            edges = self.sparse_axis_edges(fill_axis[0]) + 0.1
+            labels = np.searchsorted(edges, pos[2, :])
+            highest_mz = len(edges) - 1
+            labels[labels == highest_mz] = highest_mz
+            pos[2, :] = labels
+            for ii in range(3):
+                mask &= (pos[ii, :] >= memory_chunk[ii].start) & (
+                    pos[ii, :] < memory_chunk[ii].stop
+                )
             return MultiCOO(
                 pos[:, mask],
                 self.man_data.total_int[mask],
