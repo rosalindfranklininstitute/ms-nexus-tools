@@ -6,7 +6,7 @@ import numpy as np
 @dataclass
 class SparseSampling:
     downsample_count: int = 10
-    area_positions: Float1D32 = field(default_factory=lambda: np.array([15, 75, 100]))
+    area_positions: Float1D32 = field(default_factory=lambda: np.array([15, 85, 100]))
     area_volumes: Float1D32 = field(default_factory=lambda: np.array([5, 90, 5]))
 
     def __post_init__(self):
