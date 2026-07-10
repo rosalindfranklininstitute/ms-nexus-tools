@@ -2,16 +2,14 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Generator, NamedTuple
-from dataclasses import dataclass, field
+from typing import Generator
 import math
 import itertools
 
 import numpy as np
 
-from icecream import ic
 
-from .bounds import Chunk, Shape, Bounds
+from .bounds import Chunk, Shape
 
 
 def count_chunks_to_cover(data_shape: Shape, chunk_shape: Shape) -> list[int]:
@@ -25,7 +23,7 @@ def _count_priorities(
     priorities: Shape | list[int],
 ) -> Generator[tuple[list[int], int]]:
     count = 0
-    rev_prior = [r for r in np.argsort(priorities)]
+    rev_prior = np.argsort(priorities)
     while count < len(priorities):
         priority = priorities[rev_prior[count]]
         dimensions = []
@@ -82,14 +80,17 @@ class Chunker:
         )
 
         chunker.chunk_shape, chunker.chunk_count = chunker._calculate_from_max_count(
-            items_per_chunk, min_chunk_count
+            items_per_chunk,
+            min_chunk_count,
         )
         chunker.n_chunks = int(np.prod(chunker.chunk_count))
         chunker.chunk_items = int(np.prod(chunker.chunk_shape))
         return chunker
 
     def _calculate_from_max_count(
-        self, max_items_per_chunk: int, min_chunk_count: Shape
+        self,
+        max_items_per_chunk: int,
+        min_chunk_count: Shape,
     ) -> tuple[Shape, Shape]:
 
         min_chunk_count = tuple(
@@ -99,33 +100,34 @@ class Chunker:
             (self.data_shape[d] // min_chunk_count[d])
             for d in range(len(self.priorities))
         ]
-        chunk_shape = [c for c in min_chunk_shape]
+        chunk_shape = min_chunk_shape.copy()
 
         remaining_count = max_items_per_chunk
-        for dimensions, remaining in _count_priorities(self.priorities):
+        for dimensions, _remaining in _count_priorities(self.priorities):
             n_dims = len(dimensions)
             capacity = np.prod(
-                [(self.data_shape[i] // min_chunk_count[i]) for i in dimensions]
+                [(self.data_shape[i] // min_chunk_count[i]) for i in dimensions],
             )
             if capacity > remaining_count:
                 dim_data_shape = np.array(
-                    [(self.data_shape[d] // min_chunk_count[d]) for d in dimensions]
+                    [(self.data_shape[d] // min_chunk_count[d]) for d in dimensions],
                 )
                 min_dim = np.min(dim_data_shape)
                 weightings = dim_data_shape / min_dim
 
                 items_per_dim = np.pow(
-                    remaining_count / np.prod(weightings), 1 / n_dims
+                    remaining_count / np.prod(weightings),
+                    1 / n_dims,
                 )
 
                 total = 1
-                for d, w in zip(dimensions, weightings):
+                for d, w in zip(dimensions, weightings, strict=True):
                     chunk_shape[d] = math.ceil(w * items_per_dim)
                     total *= chunk_shape[d]
                 normal_w = weightings / np.max(weightings)
                 while total > remaining_count:
                     total = 1
-                    for d, w in zip(dimensions, normal_w):
+                    for d, w in zip(dimensions, normal_w, strict=True):
                         chunk_shape[d] = max(chunk_shape[d] - w, 1)
                         total *= math.ceil(chunk_shape[d])
                 for d in dimensions:
@@ -166,18 +168,18 @@ class Chunker:
         chunker.n_dims = len(chunker.data_shape)
 
         chunker.chunk_shape, chunker.chunk_count = chunker._calculate_from_min_chunks(
-            chunk_count
+            chunk_count,
         )
         chunker.n_chunks = int(np.prod(chunker.chunk_count))
         chunker.chunk_items = int(np.prod(chunker.chunk_shape))
         return chunker
 
-    def _calculate_from_min_chunks(self, min_chunk_count):
+    def _calculate_from_min_chunks(self, min_chunk_count) -> tuple[Shape, Shape]:
         chunk_count = [1 for _ in self.priorities]
 
         max_remaining_chunks = min_chunk_count
 
-        for dimensions, remaining in _count_priorities(self.priorities):
+        for dimensions, _remaining in _count_priorities(self.priorities):
             dim_data_shape = np.array([self.data_shape[d] for d in dimensions])
             max_dim_chunks = np.prod(dim_data_shape)
             dim_data_shape = [self.data_shape[d] for d in dimensions]
@@ -187,7 +189,8 @@ class Chunker:
                 max_remaining_chunks = math.ceil(max_remaining_chunks / max_dim_chunks)
             else:
                 for d, c in self._calculate_same_priority_from_min_chunks(
-                    dimensions, max_remaining_chunks
+                    dimensions,
+                    max_remaining_chunks,
                 ):
                     chunk_count[d] = c
                 max_dim_chunks = np.prod([self.data_shape[d] for d in dimensions])
@@ -202,7 +205,9 @@ class Chunker:
         return tuple(chunk_shape), tuple(chunk_count)
 
     def _calculate_same_priority_from_min_chunks(
-        self, dimensions: list[int], max_remaining_chunks: int
+        self,
+        dimensions: list[int],
+        max_remaining_chunks: int,
     ) -> list[tuple[int, int]]:
         assert np.prod([self.data_shape[d] for d in dimensions]) > max_remaining_chunks
 
@@ -216,18 +221,18 @@ class Chunker:
         while previous_length != len(below_average):
             previous_length = len(below_average)
             chunks_per_dim = math.ceil(
-                np.pow(remaining_chunks, (1 / len(above_average)))
+                np.pow(remaining_chunks, (1 / len(above_average))),
             )
 
             below_average.extend(
-                [d for d in above_average if self.data_shape[d] < chunks_per_dim]
+                [d for d in above_average if self.data_shape[d] < chunks_per_dim],
             )
             above_average = [
                 d for d in above_average if self.data_shape[d] >= chunks_per_dim
             ]
 
             below_average_capacity = np.prod(
-                [self.data_shape[d] for d in below_average]
+                [self.data_shape[d] for d in below_average],
             )
             remaining_chunks = math.ceil(max_remaining_chunks / below_average_capacity)
 
@@ -263,7 +268,7 @@ class Chunker:
 
         chunker.chunk_shape = chunk_shape
         chunker.chunk_count = tuple(
-            [math.ceil(d / c) for c, d in zip(chunk_shape, data_shape)]
+            [math.ceil(d / c) for c, d in zip(chunk_shape, data_shape, strict=True)],
         )
         chunker.n_chunks = int(np.prod(chunker.chunk_count))
         chunker.chunk_items = int(np.prod(chunker.chunk_shape))
@@ -271,7 +276,10 @@ class Chunker:
 
     @staticmethod
     def find_chunk_multiple(
-        data_shape, chunk_shape, max_item_count, priorities: Shape | None = None
+        data_shape,
+        chunk_shape,
+        max_item_count,
+        priorities: Shape | None = None,
     ) -> "Chunker":
         """
         Find the chunker that covers data_shape
@@ -303,25 +311,24 @@ class Chunker:
         >>> Chunker.find_chunk_multiple((100,100,100), (25,10,4), 4000).chunk_shape
         (25, 20, 8)
         """
-
         chunked_data_shape = tuple(
-            int(math.floor(d // c)) for d, c in zip(data_shape, chunk_shape)
+            int(math.floor(d // c))
+            for d, c in zip(data_shape, chunk_shape, strict=True)
         )
         items_per_chunk = int(np.prod(chunk_shape))
         if max_item_count < items_per_chunk:
             raise ValueError(
-                f"The Maximum item count ({max_item_count}) must be greater than the number of the items in a chunk ({items_per_chunk})"
+                f"The Maximum item count ({max_item_count}) must be greater than the number of the items in a chunk ({items_per_chunk})",
             )
         max_item_count = max_item_count // items_per_chunk
 
         if priorities is not None:
             process_priorities = [priorities]
         else:
-            last_first = [ii for ii in range(len(data_shape), 0, -1)]
+            last_first = list(range(len(data_shape), 0, -1))
             process_priorities = [
                 Shape(
-                    last_first[jj] if -jj > -ii else 1
-                    for jj in range(0, len(data_shape))
+                    last_first[jj] if -jj > -ii else 1 for jj in range(len(data_shape))
                 )
                 for ii in range(len(data_shape))
             ]
@@ -331,10 +338,12 @@ class Chunker:
 
         for current_priorities in process_priorities:
             chunker = Chunker.from_max_item_count(
-                chunked_data_shape, current_priorities, max_item_count
+                chunked_data_shape,
+                current_priorities,
+                max_item_count,
             )
             memory_chunk_shape = tuple(
-                c * cs for c, cs in zip(chunk_shape, chunker.chunk_shape)
+                c * cs for c, cs in zip(chunk_shape, chunker.chunk_shape, strict=True)
             )
             memory_item_count = np.prod(memory_chunk_shape)
 
@@ -346,14 +355,15 @@ class Chunker:
         return Chunker.from_chunk_shape(
             data_shape=data_shape,
             chunk_shape=tuple(
-                c * cs for c, cs in zip(chunk_shape, final_chunker.chunk_shape)
+                c * cs
+                for c, cs in zip(chunk_shape, final_chunker.chunk_shape, strict=True)
             ),
         )
 
     def __repr__(self) -> str:
         return f"data: {self.data_shape} p: {self.priorities} cshape: {self.chunk_shape} ccount: {self.chunk_count}"
 
-    def normalise(self):
+    def normalise(self) -> None:
         """
         Changes the chunk shape so that the variation in chunk size is lower.
         i.e. The number of chunks to cover the data is the same,
@@ -361,7 +371,8 @@ class Chunker:
         That is chunk_shape = data_shape/chunk_count.
         """
         self.chunk_shape = tuple(
-            math.ceil(ds / cs) for ds, cs in zip(self.data_shape, self.chunk_count)
+            math.ceil(ds / cs)
+            for ds, cs in zip(self.data_shape, self.chunk_count, strict=True)
         )
 
     def _chunk(self, dimension: int, count: int) -> slice:
@@ -372,7 +383,7 @@ class Chunker:
                 min(
                     (count + 1) * self.chunk_shape[dimension],
                     self.data_shape[dimension],
-                )
+                ),
             ),
         )
 
@@ -380,9 +391,8 @@ class Chunker:
         """
         A generator that yeilds all the chunks covered by this chunker.
         """
-
         indices = np.zeros((self.n_dims,))
-        for chunk_inx in range(self.n_chunks):
+        for _chunk_inx in range(self.n_chunks):
             for ii in range(self.n_dims):
                 indices[ii] += 1
                 if indices[ii] >= self.chunk_count[ii]:
@@ -417,15 +427,18 @@ class Chunker:
             [
                 self._chunk(ii, p // self.chunk_shape[ii])
                 for ii, p in enumerate(position)
-            ]
+            ],
         )
 
     def chunk_for_index(self, index: tuple[int, ...]) -> Chunk:
         return Chunk([self._chunk(ii, jj) for ii, jj in enumerate(index)])
 
     def edges_of_axis(
-        self, index: int, start: int | None = None, end: int | None = None
-    ):
+        self,
+        index: int,
+        start: int | None = None,
+        end: int | None = None,
+    ) -> list[int]:
 
         chunk_length = self.chunk_shape[index]
         data_length = self.data_shape[index]

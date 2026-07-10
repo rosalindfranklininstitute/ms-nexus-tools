@@ -4,29 +4,26 @@
 
 import pytest
 
-import os
 import numpy as np
 from pathlib import Path
 import shutil
-import dataclasses
 
 import multiprocessing as mp
 
-from nexusformat.nexus import NXfield, nxload
+from nexusformat.nexus import nxload
 from nexusformat.nexus.tree import NXinstrument
 
 import h5py as h5
 
 from ms_nexus_tools import api as nxapi, lib as nxlib
 
-from icecream import ic
 
 subprocess = True
 
 
-def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
+def create_files(folder: str, layers: int, width: int, height: int, spectrum: int):
 
-    path = Path("tmp_test_data") / Path(dir)
+    path = Path("tmp_test_data") / Path(folder)
     hdf_path: Path = path.joinpath("hdf.h5")
     vds_path: Path = path.joinpath("vds.h5")
     nxs_path: Path = path.joinpath("nxs.h5")
@@ -60,7 +57,7 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
             shutil.rmtree(path)
             path.mkdir()
         else:
-            return dir, raw_data.shape, path, hdf_path, vds_path, nxs_path
+            return folder, raw_data.shape, path, hdf_path, vds_path, nxs_path
 
     with nxlib.JSONTimer(path.joinpath("times.json"), ("data",)) as tmr:
         bounds = nxapi.ion.IONImageBounds(
@@ -92,7 +89,7 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
                         values=np.arange(1, bounds.layer_count + 1, 1.0),
                         name="layer",
                         indices=[0],
-                    )
+                    ),
                 ],
                 [
                     nxlib.nxs.Axis.create(
@@ -100,7 +97,7 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
                         name="x",
                         unit="micron",
                         indices=[1],
-                    )
+                    ),
                 ],
                 [
                     nxlib.nxs.Axis.create(
@@ -108,7 +105,7 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
                         name="y",
                         unit="micron",
                         indices=[2],
-                    )
+                    ),
                 ],
                 [
                     nxlib.nxs.Axis.create(
@@ -116,7 +113,7 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
                         name="mass",
                         unit="m/z",
                         indices=[3],
-                    )
+                    ),
                 ],
             ],
         )
@@ -136,29 +133,36 @@ def create_files(dir: str, layers: int, width: int, height: int, spectrum: int):
         tmr.add_user_data(**{"raw size (bytes)": uncompressed_size})
 
     with nxlib.JSONTimer(
-        path.joinpath("times.json"), ("data", str(nxlib.filetypes.DataType.ION_H5))
+        path.joinpath("times.json"),
+        ("data", str(nxlib.filetypes.DataType.ION_H5)),
     ) as tmr:
         nxapi.ion.write_metadata(hdf_path, NXinstrument(), bounds, image_axis)
         nxapi.ion.write_spectrum(hdf_path, bounds, raw_data, append=True)
         nxapi.ion.write_image(hdf_path, bounds, raw_data, append=True)
-        tmr.add_user_data(**{"size (bytes)": os.stat(hdf_path).st_size})
+        tmr.add_user_data(**{"size (bytes)": hdf_path.stat().st_size})
 
     with nxlib.JSONTimer(
-        path.joinpath("times.json"), ("data", str(nxlib.filetypes.DataType.ION_VDS))
+        path.joinpath("times.json"),
+        ("data", str(nxlib.filetypes.DataType.ION_VDS)),
     ) as tmr:
         nxapi.ion.create_spectra_vds(hdf_path, vds_path, bounds, append=False)
         nxapi.ion.create_image_vds(hdf_path, vds_path, bounds, append=True)
-        tmr.add_user_data(**{"size (bytes)": os.stat(vds_path).st_size})
+        tmr.add_user_data(**{"size (bytes)": vds_path.stat().st_size})
 
     with nxlib.JSONTimer(
-        path.joinpath("times.json"), ("data", str(nxlib.filetypes.DataType.NEXUS))
+        path.joinpath("times.json"),
+        ("data", str(nxlib.filetypes.DataType.NEXUS)),
     ) as tmr:
         nxlib.nxs.write_from_data(
-            nxs_path, raw_data, x_microns, y_microns, np.array(image_axis[3][0])
+            nxs_path,
+            raw_data,
+            x_microns,
+            y_microns,
+            np.array(image_axis[3][0]),
         )
-        tmr.add_user_data(**{"size (bytes)": os.stat(nxs_path).st_size})
+        tmr.add_user_data(**{"size (bytes)": nxs_path.stat().st_size})
 
-    return dir, raw_data.shape, path, hdf_path, vds_path, nxs_path
+    return folder, raw_data.shape, path, hdf_path, vds_path, nxs_path
 
 
 @pytest.fixture(scope="module")
@@ -183,8 +187,8 @@ def generate_parameterization():
         "create_medium_files",
         "create_large_files",
     ]
-    # file_fixture_names = ["create_small_files", "create_medium_files"]
-    # file_fixture_names = ["create_small_files"]
+    # file_fixture_names = ["create_small_files", "create_medium_files"] # noqa: ERA001
+    # file_fixture_names = ["create_small_files"] # noqa: ERA001
     functions = [("spec", run_spectrum_image, 1, 1), ("mass", run_mass_image, 10, 1)]
     return "test_files, n, side_inc, name, function", [
         (fixture_name, n, side * mult, name, func)
@@ -259,13 +263,15 @@ def run_mass_image(
 
 @pytest.mark.parametrize(*generate_parameterization())
 def test_slices(test_files, n, side_inc, name, function, request):
-    dir, shape, path, hdf_path, vds_path, nxs_path = request.getfixturevalue(test_files)
+    folder, shape, path, hdf_path, vds_path, nxs_path = request.getfixturevalue(
+        test_files,
+    )
     out_path = path.joinpath(f"{name}.csv")
 
     files_to_test = [
         (hdf_path, nxlib.filetypes.DataType.ION_H5),
     ]
-    if dir == "small":
+    if folder == "small":
         files_to_test.append((vds_path, nxlib.filetypes.DataType.ION_VDS))
     files_to_test.append((nxs_path, nxlib.filetypes.DataType.NEXUS))
 

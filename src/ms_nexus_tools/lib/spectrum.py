@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
-from .dtypes import Number2D, Number1D, Float1D32
+from .dtypes import Number1D, Float1D32
 from .utils import slice_from_values
 from .plotting import Plottable
 
@@ -26,10 +26,10 @@ def plot_spectrum(
     counts: Number1D,
     values: Number1D,
     spec_slices: list[Plottable[SpecSlice]],
-):
+) -> None:
     ax.plot(values, counts)
 
-    for ii, spec_slice in enumerate(spec_slices):
+    for spec_slice in spec_slices:
         x = spec_slice.value.start
         w = spec_slice.value.stop - spec_slice.value.start
         rect = Rectangle(

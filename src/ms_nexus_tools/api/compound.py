@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from datargs import arg_field, ArgType
 from ..lib import elements
 
-from icecream import ic
-
 
 @dataclass
 class ProcessArgs:

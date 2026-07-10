@@ -12,7 +12,7 @@ from tqdm import tqdm
 from .bounds import Shape, Chunk
 from .nxs import NexusFile
 from .query_source import AbstractQuerySource
-from .filter import Filter, Accumulator
+from .mz_filter import MzFilter, Accumulator
 from .chunker import count_chunks_to_cover
 
 
@@ -30,7 +30,7 @@ class NxsQuerySource(AbstractQuerySource):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.nx_file._file.nxfile.close()
+        self.nx_file.close()
 
     def shape(self) -> Shape:
         return self._shape
@@ -49,17 +49,17 @@ class NxsQuerySource(AbstractQuerySource):
         layer: int,
         bins: list[int],
         xy: list[tuple[int, int]],
-        totals: list[Filter],
+        totals: list[MzFilter],
         chunk: Chunk,
-    ):
+    ) -> None:
         spectra_chunking = self.nx_file.root.spectra.data.signal.chunks
         self._spectra_chunk_count = np.prod(
-            count_chunks_to_cover(self._shape, spectra_chunking)
+            count_chunks_to_cover(self._shape, spectra_chunking),
         )
 
         image_chunking = self.nx_file.root.images.data.signal.chunks
         self._images_chunk_count = np.prod(
-            count_chunks_to_cover((*self._shape[0:3], len(bins)), image_chunking)
+            count_chunks_to_cover((*self._shape[0:3], len(bins)), image_chunking),
         )  # this is postentially very optimistic
 
         if self._images_chunk_count < self._spectra_chunk_count:
@@ -68,7 +68,10 @@ class NxsQuerySource(AbstractQuerySource):
                     inner_image.add_image(
                         bb,
                         self.nx_file.root.images.data.signal[
-                            layer, chunk[1], chunk[2], bb
+                            layer,
+                            chunk[1],
+                            chunk[2],
+                            bb,
                         ],
                     )
         else:

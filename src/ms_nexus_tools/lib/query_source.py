@@ -3,16 +3,15 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from contextlib import AbstractContextManager
-from typing import Any, Callable
+from typing import Any
 from abc import abstractmethod
 
-from pathlib import Path
 
 import numpy as np
 
 from .bounds import Chunk, Shape
 from .exceptions import UnsupportedDataError
-from .filter import Filter
+from .mz_filter import MzFilter
 from .normalisation import Accumulator
 
 
@@ -25,7 +24,6 @@ class AbstractQuerySource(AbstractContextManager):
         """
         Return the shape of the data.
         """
-        pass
 
     @abstractmethod
     def mass_values(self) -> np.ndarray[tuple[int], Any]:
@@ -45,9 +43,9 @@ class AbstractQuerySource(AbstractContextManager):
         layer: int,
         bins: list[int],
         xy: list[tuple[int, int]],
-        totals: list[Filter],
+        totals: list[MzFilter],
         chunk: Chunk,
-    ):
+    ) -> None:
         pass
 
     def accumulated_spectrum(self, accumulator: Accumulator, layer: int) -> np.ndarray:

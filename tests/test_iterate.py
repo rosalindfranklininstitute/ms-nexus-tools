@@ -25,8 +25,7 @@ def test_iterage_1d(axis, a, b, c):
 
     data = np.random.random((a, b, c))
 
-    ii = 0
-    for blob in nxlib.utils.iterate(data, axis=axis):
+    for ii, blob in enumerate(nxlib.utils.iterate(data, axis=axis)):
         match axis:
             case 0 | -3:
                 expected_blob = data[ii, :, :]
@@ -38,7 +37,6 @@ def test_iterage_1d(axis, a, b, c):
                 raise ValueError
 
         np.testing.assert_array_equal(blob, expected_blob)
-        ii += 1
 
 
 @given(

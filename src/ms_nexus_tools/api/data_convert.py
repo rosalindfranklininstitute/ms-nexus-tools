@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from ms_nexus_tools.lib.dtypes import Intp1D, Bool1D
 
-from typing import Any, reveal_type, Iterable, Generator
+from typing import Any, Iterable, Generator
 from threading import Lock, local
 import concurrent.futures as cfutures
 from dataclasses import dataclass, field
@@ -11,12 +11,10 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 import sparse
-import dask.array as da
 
 from icecream import ic
 
 from tqdm import tqdm
-from tqdm.dask import TqdmCallback
 
 import hdf5plugin
 from nexusformat.nexus import NXsubentry, NXdata
@@ -49,12 +47,12 @@ from ..lib.nxs import (
 from ..lib.utils import format_bytes
 
 
-def _count_subentry_name():
+def _count_subentry_name() -> str:
     return "item_counts"
 
 
 def _items(d: dict[str, Any]) -> list[tuple[str, Any]]:
-    return [(k, v) for k, v in d.items()]
+    return list(d.items())
 
 
 @dataclass
@@ -102,7 +100,7 @@ class ProcessArgs(
             compression_opts=None,
             max_bytes_per_chunk=-1,
             shuffle=True,
-        )
+        ),
     )
 
 
@@ -113,13 +111,9 @@ class DataChunks:
         chunkers: Iterable[Chunker],
         dtypes: Iterable[npt.DTypeLike],
     ):
-        self.names: set[str] = set([n for n in names])
-        self.chunkers: dict[str, Chunker] = {
-            name: chunker for name, chunker in zip(names, chunkers, strict=True)
-        }
-        self.dtypes: dict[str, npt.DTypeLike] = {
-            name: tpe for name, tpe in zip(names, dtypes, strict=True)
-        }
+        self.names: set[str] = set(names)
+        self.chunkers: dict[str, Chunker] = dict(zip(names, chunkers, strict=True))
+        self.dtypes: dict[str, npt.DTypeLike] = dict(zip(names, dtypes, strict=True))
 
     @staticmethod
     def from_dict(data: dict[str, tuple[Chunker, npt.DTypeLike]]) -> "DataChunks":
@@ -135,7 +129,7 @@ class DataChunks:
 
     def __repr__(self) -> str:
         return ",\n".join(
-            [f"{name} ({dtype}): {chunker}" for name, chunker, dtype in self.items()]
+            [f"{name} ({dtype}): {chunker}" for name, chunker, dtype in self.items()],
         )
 
     def chunker(self, name: str) -> Chunker:
@@ -190,17 +184,17 @@ def choose_memory_buffer_and_data_chunks(
     for name, priorities in data_priorities.items():
         if len(name.strip()) == 0:
             raise ValueError(
-                "An invalid name was returned for a data set. Names must not be empty."
+                "An invalid name was returned for a data set. Names must not be empty.",
             )
         if len(priorities) != len(full_shape):
             raise ValueError(
-                f"An invalid set of priorities was returned for dataset {name}: there should be {len(full_shape)} items, but only {len(priorities)} were provided."
+                f"An invalid set of priorities was returned for dataset {name}: there should be {len(full_shape)} items, but only {len(priorities)} were provided.",
             )
     signal_type = args.data_source.signal_type()
     signal_item_width = np.dtype(signal_type).itemsize
     data_max_items = {
         name: int(args.field_options.max_bytes_per_chunk / signal_item_width)
-        for name in data_priorities.keys()
+        for name in data_priorities
     }
 
     data_chunks = DataChunks([], [], [])
@@ -216,10 +210,10 @@ def choose_memory_buffer_and_data_chunks(
         )
 
     axis_definitions = args.data_source.axis_definitions()
-    if any([ax.density == AxisDensity.SPARSE for ax in axis_definitions]):
+    if any(ax.density == AxisDensity.SPARSE for ax in axis_definitions):
         counts_item_width = np.dtype(np.uint16).itemsize
         data_max_items[_count_subentry_name()] = int(
-            args.field_options.max_bytes_per_chunk / counts_item_width
+            args.field_options.max_bytes_per_chunk / counts_item_width,
         )
         data_chunks[_count_subentry_name()] = (
             Chunker.from_max_item_count(
@@ -235,11 +229,14 @@ def choose_memory_buffer_and_data_chunks(
             np.dtype(ax.dtype).itemsize
             for ax in axis_definitions
             if ax.density == AxisDensity.SPARSE
-        ]
+        ],
     )
     memory_max_item_count = int(args.memory_max_byte_count / size_per_item)
     memory_chunks, total_read_count = choose_memory_buffer(
-        args, memory_max_item_count, density, data_chunks
+        args,
+        memory_max_item_count,
+        density,
+        data_chunks,
     )
     for name, chunker, dtype in data_chunks.items():
         data_chunks[name] = (
@@ -272,8 +269,8 @@ def provision_subentries(
                     chunks=chunker.chunk_shape,
                     shuffle=args.field_options.shuffle,
                     fillvalue=0,
-                )
-            )
+                ),
+            ),
         )
 
 
@@ -295,12 +292,12 @@ def provision_data_axis(
                 case AxisDensity.CONTINUOUS:
                     if len(axis.secondary_axes) > 0:
                         raise ValueError(
-                            "A continuouse axis should not have secondary axis."
+                            "A continuouse axis should not have secondary axis.",
                         )
                     values = args.data_source.continuous_axis_values(axis)
                     if len(values) != full_shape[axis.primary_axis]:
                         raise ValueError(
-                            f"Expected {full_shape[axis.primary_axis]} values for {axis.name} but recived {len(values)}."
+                            f"Expected {full_shape[axis.primary_axis]} values for {axis.name} but recived {len(values)}.",
                         )
                     nx_axis = NxAxis.create(
                         values=values,
@@ -312,12 +309,12 @@ def provision_data_axis(
                 case AxisDensity.SPARSE:
                     any_sparse_axis = True
                     all_axis: list[int] = sorted(
-                        [axis.primary_axis, *axis.secondary_axes]
+                        [axis.primary_axis, *axis.secondary_axes],
                     )
                     values = args.data_source.sparse_axis_edges(axis)[1:]
                     if len(values) != full_shape[axis.primary_axis]:
                         raise ValueError(
-                            f"Expected {full_shape[axis.primary_axis] + 1} edges for {axis.name} but recived {len(values) + 1}."
+                            f"Expected {full_shape[axis.primary_axis] + 1} edges for {axis.name} but recived {len(values) + 1}.",
                         )
 
                     nx_axis = NxAxis.create(
@@ -371,13 +368,10 @@ class Accumulation:
         self.ndim = len(self.shape)
         self.has_data = False
 
-    def add(self, data: np.ndarray | sparse.COO, chunk: Chunk):
+    def add(self, data: np.ndarray | sparse.COO, chunk: Chunk) -> None:
         sub_chunk = Chunk([chunk[ii] for ii in range(data.ndim) if ii not in self.axis])
 
-        if isinstance(data, sparse.COO):
-            sub_data = data[*chunk]
-        else:
-            sub_data = data
+        sub_data = data[*chunk] if isinstance(data, sparse.COO) else data
 
         max_data = np.maximum(self.max_data[*sub_chunk], sub_data.max(axis=self.axis))
         sum_data = np.add(self.sum_data[*sub_chunk], sub_data.sum(axis=self.axis))
@@ -396,7 +390,10 @@ class Accumulation:
 
 
 def provision_accumulation_subentries(
-    nxs: NexusFile, args: ProcessArgs, shape: Shape, axis_definitions: dict[str, Axis]
+    nxs: NexusFile,
+    args: ProcessArgs,
+    shape: Shape,
+    axis_definitions: dict[str, Axis],
 ) -> tuple[dict[str, Accumulation], dict[str, Accumulation]]:
     accumulations = args.data_source.output_accumulations()
     dtype = args.data_source.signal_type()
@@ -412,9 +409,12 @@ def provision_accumulation_subentries(
         group_axes.append(
             [
                 NxAxis.create(
-                    values=["sum", "max"], name="accumulator", indices=[0], unit=""
-                )
-            ]
+                    values=["sum", "max"],
+                    name="accumulator",
+                    indices=[0],
+                    unit="",
+                ),
+            ],
         )
         has_sparse_axis = False
 
@@ -422,12 +422,12 @@ def provision_accumulation_subentries(
             if ax_name in axes:
                 axis_to_accumulate[ax.primary_axis] = True
 
-        final_dim = np.sum(axis_to_accumulate == False)
+        final_dim = np.sum(axis_to_accumulate == False)  # noqa: E712
         acc_shape: Intp1D = np.zeros((final_dim,), dtype=np.intp)
         for _ in range(final_dim):
             group_axes.append([])
 
-        for ax_name, ax in axis_definitions.items():
+        for ax in axis_definitions.values():
             if not axis_to_accumulate[ax.primary_axis]:
                 match ax.density:
                     case AxisDensity.CONTINUOUS:
@@ -441,13 +441,13 @@ def provision_accumulation_subentries(
                         raise ValueError(f"Unknown Axis density: {ax.density}")
                 count = len(values)
                 new_index = ax.primary_axis - np.sum(
-                    axis_to_accumulate[0 : ax.primary_axis]
+                    axis_to_accumulate[0 : ax.primary_axis],
                 )
                 if acc_shape[new_index] == 0:
                     acc_shape[new_index] = count
                 elif count != acc_shape[new_index]:
                     raise ValueError(
-                        f"Found conflicting sizes for {new_index}. Initially set to {acc_shape[new_index]} now trying to set to {count}"
+                        f"Found conflicting sizes for {new_index}. Initially set to {acc_shape[new_index]} now trying to set to {count}",
                     )
 
                 nx_axis = NxAxis.create(
@@ -476,8 +476,8 @@ def provision_accumulation_subentries(
                     chunks=None,
                     shuffle=args.field_options.shuffle,
                     fillvalue=0,
-                )
-            )
+                ),
+            ),
         )
         group_axes.add_to_group(nxs.root[ac_name]["data"])
         if has_sparse_axis:
@@ -498,15 +498,15 @@ def provision_accumulation_subentries(
                         chunks=None,
                         shuffle=args.field_options.shuffle,
                         fillvalue=0,
-                    )
-                )
+                    ),
+                ),
             )
             group_axes.add_to_group(nxs.root[counts_name]["data"])
 
     return final_accumulations, count_accumulations
 
 
-def _unique(coords, shape):
+def _unique(coords: np.ndarray, shape: Shape) -> np.ndarray:
     linear: Intp1D = np.ravel_multi_index(coords, shape)
     order = np.argsort(linear)
     linear = linear[order]
@@ -534,115 +534,119 @@ def write_data(
             assert data_entry != _count_subentry_name()
             nxs.root[data_entry].data.signal[*memory_chunk] = chunk_data
         return chunk_data, None
-    else:
-        if len(sparse_axis) != 1:
-            raise NotImplementedError("Only 1 sparse axis is supported.")
-        if isinstance(chunk_data, np.ndarray):
-            raise ValueError(
-                "Recived a sparse axis, with dense data. The data should be sparse. "
-            )
-
-        try:
-            final_data, counts = chunk_data.sort(full_shape).acc_duplicates(
-                full_shape, count=True
-            )
-        except ValueError:
-            ic(full_shape)
-            ic(memory_chunk.shape)
-            ic(chunk_data.coords.shape)
-            ic(np.min(chunk_data.coords, axis=1))
-            ic(np.max(chunk_data.coords, axis=1))
-            raise
-
-        signal_data = sparse.COO(
-            coords=final_data.coords,
-            data=final_data.signal,
-            shape=full_shape,
-            sorted=True,
-            has_duplicates=False,
-            prune=False,
+    if len(sparse_axis) != 1:
+        raise NotImplementedError("Only 1 sparse axis is supported.")
+    if isinstance(chunk_data, np.ndarray):
+        raise TypeError(
+            "Recived a sparse axis, with dense data. The data should be sparse. ",
         )
 
-        axis_data = sparse.COO(
-            coords=final_data.coords,
-            data=final_data.axis[0],
-            shape=full_shape,
-            sorted=True,
-            has_duplicates=False,
-            prune=False,
+    try:
+        final_data, counts = chunk_data.sort(full_shape).acc_duplicates(
+            full_shape,
+            count=True,
+        )
+    except ValueError:
+        ic(full_shape)
+        ic(memory_chunk.shape)
+        ic(chunk_data.coords.shape)
+        ic(np.min(chunk_data.coords, axis=1))
+        ic(np.max(chunk_data.coords, axis=1))
+        raise
+
+    signal_data = sparse.COO(
+        coords=final_data.coords,
+        data=final_data.signal,
+        shape=full_shape,
+        sorted=True,
+        has_duplicates=False,
+        prune=False,
+    )
+
+    axis_data = sparse.COO(
+        coords=final_data.coords,
+        data=final_data.axis[0],
+        shape=full_shape,
+        sorted=True,
+        has_duplicates=False,
+        prune=False,
+    )
+
+    count_data = sparse.COO(
+        coords=final_data.coords,
+        data=counts,
+        shape=full_shape,
+        sorted=True,
+        has_duplicates=False,
+        prune=False,
+    )
+
+    axis = sparse_axis[0]
+
+    for data_entry, data_chunker, _ in data_chunks.items():
+        cbounds = ContainedBounds.from_chunk(data_chunker.data_shape, memory_chunk)
+
+        chunk_edges = cbounds.chunk_edges(data_chunker.chunk_shape)
+
+        coords = np.stack(
+            [
+                np.searchsorted(
+                    chunk_edges[ii],
+                    final_data.coords[ii, :],
+                    side="right",
+                )
+                for ii in range(final_data.coords.shape[0])
+            ],
         )
 
-        count_data = sparse.COO(
-            coords=final_data.coords,
-            data=counts,
-            shape=full_shape,
-            sorted=True,
-            has_duplicates=False,
-            prune=False,
-        )
+        coords = _unique(coords - 1, data_chunker.chunk_count) + 1
 
-        axis = sparse_axis[0]
+        unique_chunk_count = coords.shape[1]
+        total_chunk_count = np.prod([len(edges) - 1 for edges in chunk_edges])
 
-        for data_entry, data_chunker, _ in data_chunks.items():
-            cbounds = ContainedBounds.from_chunk(data_chunker.data_shape, memory_chunk)
+        # This is true where two coords are NOT adjacent.
+        # Note: that this assumes the coords array is flattened and sorted, so that you cannot zig zag through the data.
+        is_not_adjacent = np.diff(coords[-1, :]) != 1
 
-            chunk_edges = cbounds.chunk_edges(data_chunker.chunk_shape)
+        adjacent = np.argwhere(is_not_adjacent).flatten()
+        adjacent = np.concatenate([[0], adjacent + 1, [coords.shape[1]]])
 
-            coords = np.stack(
+        starts = coords[:, adjacent[:-1]]
+        ends = coords[:, adjacent[1:] - 1]
+        # Assert that each continuouse block is continuous in only one diemnsion.
+        # In principle we could have contigouse blocks across multiple blocks,
+        # but this requres them to be full, and the above method does not garantee that.
+        assert np.all(np.sum((ends - starts != 0), axis=0) <= 1)
+
+        for ii in tqdm(
+            range(starts.shape[1]),
+            desc=f"Writing chunks for {data_entry} (density: {unique_chunk_count / total_chunk_count:.2f})",
+            leave=False,
+        ):
+            chunk = Chunk(
                 [
-                    np.searchsorted(
-                        chunk_edges[ii], final_data.coords[ii, :], side="right"
+                    slice(chunk_edges[jj][sc - 1], chunk_edges[jj][ec], None)
+                    for jj, (sc, ec) in enumerate(
+                        zip(starts[:, ii], ends[:, ii], strict=True),
                     )
-                    for ii in range(final_data.coords.shape[0])
                 ],
             )
 
-            coords = _unique(coords - 1, data_chunker.chunk_count) + 1
+            if data_entry == _count_subentry_name():
+                signal_chunk = count_data[*chunk]
+            else:
+                signal_chunk = signal_data[*chunk]
 
-            unique_chunk_count = coords.shape[1]
-            total_chunk_count = np.prod([len(edges) - 1 for edges in chunk_edges])
+            axis_chunk = axis_data[*chunk]
+            assert signal_chunk.nnz != 0
+            assert axis_chunk.nnz != 0
+            assert axis_chunk.nnz == signal_chunk.nnz
 
-            # This is true where two coords are NOT adjacent.
-            # Note: that this assumes the coords array is flattened and sorted, so that you cannot zig zag through the data.
-            is_not_adjacent = np.diff(coords[-1, :]) != 1
-
-            adjacent = np.argwhere(is_not_adjacent).flatten()
-            adjacent = np.concatenate([[0], adjacent + 1, [coords.shape[1]]])
-
-            starts = coords[:, adjacent[:-1]]
-            ends = coords[:, adjacent[1:] - 1]
-            # Assert that each continuouse block is continuous in only one diemnsion.
-            # In principle we could have contigouse blocks across multiple blocks,
-            # but this requres them to be full, and the above method does not garantee that.
-            assert np.all(np.sum((ends - starts != 0), axis=0) <= 1)
-
-            for ii in tqdm(
-                range(starts.shape[1]),
-                desc=f"Writing chunks for {data_entry} (density: {unique_chunk_count / total_chunk_count:.2f})",
-                leave=False,
-            ):
-                chunk = Chunk(
-                    [
-                        slice(chunk_edges[jj][sc - 1], chunk_edges[jj][ec], None)
-                        for jj, (sc, ec) in enumerate(zip(starts[:, ii], ends[:, ii]))
-                    ]
-                )
-
-                if data_entry == _count_subentry_name():
-                    signal_chunk = count_data[*chunk]
-                else:
-                    signal_chunk = signal_data[*chunk]
-
-                axis_chunk = axis_data[*chunk]
-                assert signal_chunk.nnz != 0
-                assert axis_chunk.nnz != 0
-                assert axis_chunk.nnz == signal_chunk.nnz
-
-                nxs.root[data_entry].data.signal[*chunk] = signal_chunk.todense()
-                nxs.root[data_entry].data[f"{axis.name}_exact"][*chunk] = (
-                    axis_chunk.todense()
-                )
-        return signal_data, count_data
+            nxs.root[data_entry].data.signal[*chunk] = signal_chunk.todense()
+            nxs.root[data_entry].data[f"{axis.name}_exact"][*chunk] = (
+                axis_chunk.todense()
+            )
+    return signal_data, count_data
 
 
 def accumulate_data(
@@ -651,7 +655,7 @@ def accumulate_data(
     memory_chunk: Chunk,
     data: np.ndarray | sparse.COO,
     counts: None | sparse.COO,
-):
+) -> None:
 
     total = len(accumulations) + len(count_accumulations) if counts is not None else 0
 
@@ -665,7 +669,7 @@ def accumulate_data(
                 progress.update()
 
 
-def add_items_to_group(items: dict[str, Any], root):
+def add_items_to_group(items: dict[str, Any], root) -> None:
     for key, value in items.items():
         if isinstance(value, dict):
             if key not in root:
@@ -675,7 +679,7 @@ def add_items_to_group(items: dict[str, Any], root):
             root.attrs[key] = value
 
 
-def process(args: ProcessArgs, config: dict[str, Any] = {}):
+def process(args: ProcessArgs, config: dict[str, Any] = {}) -> None:
     assert args.in_path.exists(), f"The input file {args.in_path} was not found"
 
     if args.field_options.max_bytes_per_chunk <= 0:
@@ -702,11 +706,17 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
         provision_subentries(nxs, args, data_chunks)
 
         axis_definitions, any_sparse_axis = provision_data_axis(
-            nxs, args, full_shape, data_chunks
+            nxs,
+            args,
+            full_shape,
+            data_chunks,
         )
 
         accumulations, count_accumulations = provision_accumulation_subentries(
-            nxs, args, full_shape, axis_definitions
+            nxs,
+            args,
+            full_shape,
+            axis_definitions,
         )
 
         sparse_axis = [
@@ -715,30 +725,30 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
 
         print(f"Processing file {args.in_path} and writing results to {args.out_path}")
         print(
-            f" Giving a final data shape of {full_shape} (Raw {format_bytes(np.prod(full_shape) * size_per_item)})"
+            f" Giving a final data shape of {full_shape} (Raw {format_bytes(np.prod(full_shape) * size_per_item)})",
         )
 
         print(
-            f"Using a memory chunk shape {memory_chunks.chunk_shape} and count {memory_chunks.chunk_count}."
+            f"Using a memory chunk shape {memory_chunks.chunk_shape} and count {memory_chunks.chunk_count}.",
         )
         print(
-            f" Dense usage: {np.prod(memory_chunks.chunk_shape)} items ({format_bytes(np.prod(memory_chunks.chunk_shape) * size_per_item)})."
+            f" Dense usage: {np.prod(memory_chunks.chunk_shape)} items ({format_bytes(np.prod(memory_chunks.chunk_shape) * size_per_item)}).",
         )
         if density < 1:
             print(
-                f" Sparse usage: {int(np.prod(memory_chunks.chunk_shape) * density)} items ({format_bytes(np.prod(memory_chunks.chunk_shape) * size_per_item * density)}), worst case density {density:.2f}."
+                f" Sparse usage: {int(np.prod(memory_chunks.chunk_shape) * density)} items ({format_bytes(np.prod(memory_chunks.chunk_shape) * size_per_item * density)}), worst case density {density:.2f}.",
             )
         print("With data blocks:")
         print(
-            f"maximum chunk size ({format_bytes(args.field_options.max_bytes_per_chunk)})"
+            f"maximum chunk size ({format_bytes(args.field_options.max_bytes_per_chunk)})",
         )
         for name, chunker, dtype in data_chunks.items():
             width = np.dtype(dtype).itemsize
             print(
-                f"    {name: >10}: chunk shape {chunker.chunk_shape} and total count {chunker.chunk_count} and memory count {count_chunks_to_cover(memory_chunks.chunk_shape, chunker.chunk_shape)}."
+                f"    {name: >10}: chunk shape {chunker.chunk_shape} and total count {chunker.chunk_count} and memory count {count_chunks_to_cover(memory_chunks.chunk_shape, chunker.chunk_shape)}.",
             )
             print(
-                f"    {' ' * 10}: chunk size: {np.prod(chunker.chunk_shape)} items ({format_bytes(np.prod(chunker.chunk_shape) * width)})."
+                f"    {' ' * 10}: chunk size: {np.prod(chunker.chunk_shape)} items ({format_bytes(np.prod(chunker.chunk_shape) * width)}).",
             )
 
         with tqdm(desc="Overall reads", total=total_read_count) as overall_reads_timer:
@@ -746,11 +756,13 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
             accumulation_lock = Lock()
             nexus_file_lock = Lock()
 
-            def process_chunk(memory_chunk: Chunk):
+            def process_chunk(memory_chunk: Chunk) -> None:
                 local_store = local()
                 with data_source_lock:
                     local_store.chunk_data = args.data_source.fill_chunk(
-                        memory_chunk, sparse_axis, overall_reads_timer.update
+                        memory_chunk,
+                        sparse_axis,
+                        overall_reads_timer.update,
                     )
 
                 with nexus_file_lock:
@@ -773,9 +785,8 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                         local_store.written_signal,
                         local_store.written_count,
                     )
-                pass
 
-            outer_chunks = [chunk for chunk in memory_chunks.chunks()]
+            outer_chunks = list(memory_chunks.chunks())
             with cfutures.ThreadPoolExecutor(max_workers=2) as executor:
                 futures = [
                     executor.submit(process_chunk, memory_chunk)
@@ -800,6 +811,6 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
             desc="Writing accumulations",
         ):
             if accumulation.has_data:
-                extra_slices = [slice(None) for _ in range(0, accumulation.ndim)]
+                extra_slices = [slice(None) for _ in range(accumulation.ndim)]
                 nxs.root[name].data.signal[0, *extra_slices] = accumulation.max_data
                 nxs.root[name].data.signal[1, *extra_slices] = accumulation.sum_data

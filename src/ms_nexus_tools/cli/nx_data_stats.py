@@ -10,7 +10,7 @@ from ..lib.chunker import count_chunks_to_cover
 from ..lib.utils import format_bytes
 
 
-def print_nx_data_stats():
+def print_nx_data_stats() -> None:
     parser = argparse.ArgumentParser(
         "nx_data_stats",
         description="Reads all the high leve subentries prints some details about the data.",
@@ -39,10 +39,10 @@ def print_nx_data_stats():
                 width = np.dtype(dtype).itemsize
                 print(f"Details for dataset {name}")
                 print(
-                    f" Shape: {shape} giving {total_items} items ({dtype} giving {format_bytes(total_items * width)})"
+                    f" Shape: {shape} giving {total_items} items ({dtype} giving {format_bytes(total_items * width)})",
                 )
                 print(
-                    f" Chunk shape {chunks} and count {count} ({format_bytes(np.prod(chunks) * width)})"
+                    f" Chunk shape {chunks} and count {count} ({format_bytes(np.prod(chunks) * width)})",
                 )
                 print(f" Total chunks {total_chunks}, of which {n} were used.")
                 print(f" Density {n / total_chunks:.2f}")

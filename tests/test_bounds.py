@@ -3,12 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from hypothesis import strategies as st, given
-from pytest import raises
+import pytest
 
 from ms_nexus_tools.lib.bounds import Chunk
 from ms_nexus_tools.lib import ContainedBounds
-
-from icecream import ic
 
 
 @st.composite
@@ -24,7 +22,6 @@ def bounds(draw):
     w = draw(oute_inner_offset())  # type: ignore
     h = draw(oute_inner_offset())  # type: ignore
     d = draw(oute_inner_offset())  # type: ignore
-    ic(w, h, d)
     return ContainedBounds(
         outer_shape=(w[0], h[0], d[0]),
         inner_shape=(w[1], h[1], d[1]),
@@ -38,22 +35,22 @@ def bounds(draw):
     st.integers(min_value=0, max_value=100),
     st.integers(min_value=0, max_value=100),
 )
-def test_indexes(bounds, iw, ih, id):
+def test_indexes(bounds, iw, ih, iz):
 
     inner_slices = bounds.inner_slices()
 
     if (
         inner_slices[0].start <= iw < inner_slices[0].stop
         and inner_slices[1].start <= ih < inner_slices[1].stop
-        and inner_slices[2].start <= id < inner_slices[2].stop
+        and inner_slices[2].start <= iz < inner_slices[2].stop
     ):
-        inner_inx = bounds.inner_index(iw, ih, id)
+        inner_inx = bounds.inner_index(iw, ih, iz)
         outer_inx = bounds.outer_index(*inner_inx)
 
-        assert outer_inx == [iw, ih, id]
+        assert outer_inx == [iw, ih, iz]
     else:
-        with raises(IndexError):
-            bounds.inner_index(iw, ih, id)
+        with pytest.raises(IndexError):
+            bounds.inner_index(iw, ih, iz)
 
 
 @st.composite
@@ -86,5 +83,5 @@ def test_slices(bounds, w, h, d):
 
         assert outer_chunk == Chunk([w, h, d])
     else:
-        with raises(IndexError):
+        with pytest.raises(IndexError):
             bounds.inner_chunk(Chunk((w, h, d)))

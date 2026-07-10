@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Duncan McDougall <duncan.mcdougall@rfi.ac.uk>
 #
 # SPDX-License-Identifier: Apache-2.0
+from types import GeneratorType
 
 from typing import Callable, Any
 from contextlib import contextmanager, AbstractContextManager
@@ -10,11 +11,9 @@ import threading
 from collections.abc import Iterable
 from pathlib import Path
 
-from icecream import ic
-
 
 @contextmanager
-def time_this(name: str):
+def time_this(name: str) -> GeneratorType[None]:
     # Code to acquire resource, e.g.:
     now = time.monotonic()
     print(f"{name} began.")
@@ -69,10 +68,10 @@ class Timer(AbstractContextManager):
         now = time.monotonic()
         print(f"{self.name} completed in {now - self._start:.2f}s")
 
-    def total_time(self):
+    def total_time(self) -> float:
         return time.monotonic() - self._start
 
-    def _start_timer(self):
+    def _start_timer(self) -> None:
         self._timer.cancel()
         self._timer = threading.Timer(
             interval=self.interval,
@@ -81,7 +80,7 @@ class Timer(AbstractContextManager):
         )
         self._timer.start()
 
-    def _print(self):
+    def _print(self) -> None:
         now = time.monotonic()
 
         if self.report_callback is not None:
@@ -116,7 +115,7 @@ class Timer(AbstractContextManager):
         self._print()
 
 
-class JSONTimerSkip(Exception):
+class JSONTimerSkip(Exception):  # noqa: N818
     pass
 
 
@@ -156,7 +155,7 @@ class JSONTimer(AbstractContextManager):
 
         return False
 
-    def skip_if_present(self):
+    def skip_if_present(self) -> None:
         if self.filename.exists():
             with open(self.filename, "r") as fd:
                 old_data = json.load(fd)
@@ -171,5 +170,5 @@ class JSONTimer(AbstractContextManager):
         if skip:
             raise JSONTimerSkip()
 
-    def add_user_data(self, /, **kwargs):
+    def add_user_data(self, /, **kwargs) -> None:
         self._data.update(kwargs)

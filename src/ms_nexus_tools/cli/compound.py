@@ -8,7 +8,7 @@ import datargs
 from ..api import compound as comp_api
 
 
-def compound():
+def compound() -> None:
     parser = argparse.ArgumentParser(prog="compound")
 
     datargs.add_arguments(parser, comp_api.ProcessArgs)
@@ -23,5 +23,5 @@ def compound():
     print(f"  {properties.average_mass}Da average mass")
     print(f"  {properties.lightest_monoisotropic_mass}Da lightest monoisotropic mass")
     print(
-        f"  {properties.abundant_monoisotropic_mass}Da most abundant monoisotropic mass"
+        f"  {properties.abundant_monoisotropic_mass}Da most abundant monoisotropic mass",
     )

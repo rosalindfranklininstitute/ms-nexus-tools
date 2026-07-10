@@ -45,10 +45,14 @@ build-backend = "uv_build"
 indent-width=4
 
 [tool.ruff.lint]
-select=['E4','E7','E9','F','N']
+select=['E1', 'E4','E7','E9','F','N','ERA', 'ANN2', 'S', 'BLE', 'B', 'A', 'C4', 'COM', 'ISC', 'ICN', 'LOG', 'PIE','RET', 'SLF','SIM', 'TD', 'ARG', 'PTH', 'FLY', 'NPY', 'PERF', "D2", "TRY", "PT"]
+ignore=["C408", "S311", "PTH123", "NPY002", "D203", "D205", "D212", "B006", "ARG001", "ARG002", "D200", "ANN204", "S101", "TRY003", 'RET504', 'COM812']
+# From some modules: T20 -. Print   
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["F401"]
+"tests/**/*" = ["ANN", "S101"]
+"benchmarks/**/*" = ["ANN", "S101"]
 
 [tool.pytest]
 testpaths = ["./tests", "./src/"]

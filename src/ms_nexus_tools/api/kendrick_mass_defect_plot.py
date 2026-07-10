@@ -82,7 +82,7 @@ def process(args: ProcessArgs) -> None:
     ax.set_title(f"Kendrick Mass Plot for {args.normalising_formula} = {compound_knm}")
     ax.scatter(knm, kmd, sizes=sizes, **args.plot_args.scatter_kw_args)
     ax.set_xlabel(
-        f"Kendric Normalised Mass (m/z * {compound_knm:.0f}/{comp_properties.lightest_monoisotropic_mass:.2f})"
+        f"Kendric Normalised Mass (m/z * {compound_knm:.0f}/{comp_properties.lightest_monoisotropic_mass:.2f})",
     )
     ax.set_ylabel("Mass Defect (round(m/z) - KNM)")
 

@@ -4,14 +4,9 @@
 
 import random
 
-import pytest
 import numpy as np
 
 from ms_nexus_tools import lib as nxlib
-
-from icecream import ic, install
-
-install()
 
 
 def test_norms_shape():
@@ -38,8 +33,7 @@ def test_norms_shape():
     assert norms["yz"].max.shape == (2,)
     assert norms["xyz"].max.shape == ()
 
-    for k, n in norms.items():
-        ic(k, n.max)
+    for n in norms.values():
         assert (n.max == np.ones(n.max.shape) * 2).all()
 
     assert (norms["x"].tic == 3 * 2).all()

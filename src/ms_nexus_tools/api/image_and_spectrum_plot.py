@@ -6,14 +6,12 @@ from typing import Any
 from dataclasses import dataclass, field
 import tomllib
 from pathlib import Path
-from bisect import bisect_left, bisect_right
 
 import numpy as np
 import matplotlib.pyplot as plt
 
 from ..lib.plot_utils import AxCommand
 
-from . import compound
 from . import image_plot
 from . import spectrum_plot
 
@@ -54,7 +52,7 @@ class PlotKwArgs:
     def from_image_and_spectra_args(
         image_plot_args: image_plot.PlotKwArgs,
         spectrum_plot_args: spectrum_plot.PlotKwArgs,
-    ):
+    ) -> "PlotKwArgs":
         return PlotKwArgs(
             plot_kw_args=spectrum_plot_args.plot_kw_args,
             plot_axes_commands_and_kw_args=spectrum_plot_args.axes_commands_and_kw_args,

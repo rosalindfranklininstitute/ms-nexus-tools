@@ -41,7 +41,8 @@ def test_adjust_origin_default(new: nxlib.OriginLocation):
     adjusted = nxlib.image.adjust_origin(data, new)
 
     assert get_corner(adjusted, nxlib.OriginLocation.UPPER_LEFT) == get_corner(
-        data, new
+        data,
+        new,
     )
     assert len(data.shape) == len(adjusted.shape)
     assert len(data) == len(adjusted)

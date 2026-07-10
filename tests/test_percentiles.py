@@ -33,21 +33,15 @@ def test_percentiles():
             0.42,
             0.09,
             11.37,
-        ]
+        ],
     )
     expected_results = np.array([0.02, 0.5232, 4.402, 11.29, 38.62])
-    percentiles = np.percentile(data, [0, 25, 50, 75, 100])
 
     p2_perc = nxlib.normalisation.P2Histogram(b=4)
 
-    for ii, x in enumerate(data):
+    for x in data:
         p2_perc.add(x)
 
-    ic(p2_perc.heights)
-    ic(percentiles)
-    ic(expected_results)
-
-    ic(p2_perc.positions)
     np.testing.assert_allclose(p2_perc.heights[0, :], expected_results, rtol=1e-3)
 
     # Extra 100 random data points
@@ -102,16 +96,11 @@ def test_percentiles_2d():
             0.42,
             0.09,
             11.37,
-        ]
+        ],
     )
     expected_results = np.array([0.02, 0.5232, 4.402, 11.29, 38.62])
     data = np.tile(data, (2, 1)).T
     expected_results = np.tile(expected_results, (2, 1))
-    ic(data.shape)
-    ic(expected_results.shape)
-    percentiles = np.percentile(data, [0, 25, 50, 75, 100], axis=0).T
-    ic(percentiles.shape)
-    ic(percentiles)
 
     p2_perc = nxlib.normalisation.P2Histogram(
         b=4,
@@ -121,11 +110,6 @@ def test_percentiles_2d():
     for ii, x in enumerate(data):
         p2_perc.add(x)
         print(f" --- {ii + 1}: {x} --- ", file=sys.stderr)
-        ic(p2_perc.positions + 1)
-        ic(p2_perc.heights)
-
-    ic(p2_perc.heights)
-    ic(p2_perc.positions)
 
     np.testing.assert_allclose(p2_perc.heights, expected_results, rtol=1e-3)
 
@@ -155,16 +139,11 @@ def test_percentiles_3d():
             0.42,
             0.09,
             11.37,
-        ]
+        ],
     )
     expected_results = np.array([0.02, 0.5232, 4.402, 11.29, 38.62])
     data = np.tile(data, (2, 2, 1)).T
     expected_results = np.tile(expected_results, (2, 2, 1))
-    ic(data.shape)
-    ic(expected_results.shape)
-    percentiles = np.percentile(data, [0, 25, 50, 75, 100], axis=0).T
-    ic(percentiles.shape)
-    ic(percentiles)
 
     p2_perc = nxlib.normalisation.P2Histogram(
         b=4,
@@ -174,10 +153,7 @@ def test_percentiles_3d():
         ),
     )
 
-    for ii, x in enumerate(data):
+    for x in data:
         p2_perc.add(x)
-
-    ic(p2_perc.heights)
-    ic(p2_perc.positions)
 
     np.testing.assert_allclose(p2_perc.heights, expected_results, rtol=1e-3)

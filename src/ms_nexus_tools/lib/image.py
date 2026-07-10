@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Generic, Any
+from typing import Any
 from enum import Enum
 from dataclasses import dataclass
 
@@ -42,8 +42,7 @@ def adjust_origin(
 
     if len(axis) > 0:
         return np.flip(a, axis=tuple(axis))
-    else:
-        return a
+    return a
 
 
 @dataclass
@@ -78,9 +77,9 @@ def plot_image(
 ) -> tuple[Any, tuple[Number, Number]]:
     im_min, im_max = np.percentile(image, [0, 100])
     if x_values is None and y_values is not None:
-        x_values = np.array([ii for ii in range(image.shape[0])])
+        x_values = np.arange(image.shape[0])
     elif x_values is not None and y_values is None:
-        y_values = np.array([ii for ii in range(image.shape[1])])
+        y_values = np.arange(image.shape[1])
 
     if x_values is None and y_values is None:
         im = ax.imshow(image, **kwargs)
@@ -106,7 +105,7 @@ def plot_image(
         )
         im = ax.imshow(img.T, extent=(mnx, mxx, mny, mxy), **kwargs)
 
-    for jj, xy_rect in enumerate(xy_rectangles):
+    for xy_rect in xy_rectangles:
         rect = xy_rect.value.get_plot_rect(
             linewidth=2,
             edgecolor=xy_rect.color,

@@ -5,11 +5,8 @@ import math
 import itertools
 
 from dataclasses import dataclass, field
-from typing import TypeAlias, overload, Iterable
-from functools import reduce
-import numpy as np
 
-from .bounds import Bounds, Chunk, Shape
+from .bounds import Chunk, Shape
 from .exceptions import NoDataError, InnerDataNotContainedError
 
 
@@ -36,9 +33,9 @@ class ContainedBounds:
         for ii, c in enumerate(self.inner_shape):
             if c == 0 or self.outer_shape[ii] == 0:
                 raise NoDataError(f"No data in dimension {ii + 1}.")
-            elif c + self.offset[ii] > self.outer_shape[ii]:
+            if c + self.offset[ii] > self.outer_shape[ii]:
                 raise InnerDataNotContainedError(
-                    f"Inner shape not contained in outer shape on diemsnion {ii + 1}."
+                    f"Inner shape not contained in outer shape on diemsnion {ii + 1}.",
                 )
 
         self.dimensions = len(self.outer_shape)
@@ -74,12 +71,11 @@ class ContainedBounds:
         >>> cbounds.inner_slices()
         (10:20, 20:30, 30:40)
         """
-
         return Chunk(
             [
                 slice(self.offset[ii], self.offset[ii] + c)
                 for ii, c in enumerate(self.inner_shape)
-            ]
+            ],
         )
 
     def inner_chunk(self, outer_chunk: Chunk) -> Chunk:
@@ -100,8 +96,9 @@ class ContainedBounds:
                 for s, e in zip(
                     self.inner_index(*[int(c.start) for c in outer_chunk]),
                     self.inner_index(*[int(c.stop) for c in outer_chunk]),
+                    strict=True,
                 )
-            ]
+            ],
         )
 
     def outer_index(self, *inner_index: int) -> list[int]:
@@ -138,8 +135,9 @@ class ContainedBounds:
                 for s, e in zip(
                     self.outer_index(*[int(c.start) for c in inner_chunk]),
                     self.outer_index(*[int(c.stop) for c in inner_chunk]),
+                    strict=True,
                 )
-            ]
+            ],
         )
 
     def chunk_edges(self, chunk_shape: Shape) -> list[list[int]]:
@@ -162,19 +160,29 @@ class ContainedBounds:
         >>> cbounds.chunk_edges((10,10,10))
         [[11, 20, 21], [11, 20, 30, 31], [30, 40]]
         """
-        inner_stops = [off + inn for off, inn in zip(self.offset, self.inner_shape)]
-        start_counts = [off // cs for off, cs in zip(self.offset, chunk_shape)]
+        inner_stops = [
+            off + inn for off, inn in zip(self.offset, self.inner_shape, strict=True)
+        ]
+        start_counts = [
+            off // cs for off, cs in zip(self.offset, chunk_shape, strict=True)
+        ]
         end_counts = [
-            math.ceil(stop / cs) for stop, cs in zip(inner_stops, chunk_shape)
+            math.ceil(stop / cs)
+            for stop, cs in zip(inner_stops, chunk_shape, strict=True)
         ]
         chunk_indices = [
-            [a for a in range(sc + 1, ec)] for sc, ec in zip(start_counts, end_counts)
+            list(range(sc + 1, ec))
+            for sc, ec in zip(start_counts, end_counts, strict=True)
         ]
 
         chunk_edges = [
             [start, *[ii * cs for ii in inx], stop]
             for inx, cs, start, stop in zip(
-                chunk_indices, chunk_shape, self.offset, inner_stops
+                chunk_indices,
+                chunk_shape,
+                self.offset,
+                inner_stops,
+                strict=True,
             )
         ]
         return chunk_edges
@@ -201,15 +209,22 @@ class ContainedBounds:
         >>> cbounds.chunks((10,10,10))
         [((11:20, 20:30, 30:40), (0:9, 0:10, 0:10)), ((20:21, 20:30, 30:40), (9:10, 0:10, 0:10))]
         """
-
-        inner_stops = [off + inn for off, inn in zip(self.offset, self.inner_shape)]
-        start_counts = [off // cs for off, cs in zip(self.offset, chunk_shape)]
+        inner_stops = [
+            off + inn for off, inn in zip(self.offset, self.inner_shape, strict=True)
+        ]
+        start_counts = [
+            off // cs for off, cs in zip(self.offset, chunk_shape, strict=True)
+        ]
         end_counts = [
-            math.ceil(stop / cs) for stop, cs in zip(inner_stops, chunk_shape)
+            math.ceil(stop / cs)
+            for stop, cs in zip(inner_stops, chunk_shape, strict=True)
         ]
 
         chunk_indices = itertools.product(
-            *[[a for a in range(sc, ec)] for sc, ec in zip(start_counts, end_counts)]
+            *[
+                list(range(sc, ec))
+                for sc, ec in zip(start_counts, end_counts, strict=True)
+            ],
         )
 
         results = []
@@ -218,15 +233,19 @@ class ContainedBounds:
                 [
                     slice(max(ii * cs, start), min((ii + 1) * cs, stop))
                     for ii, cs, start, stop in zip(
-                        inx, chunk_shape, self.offset, inner_stops
+                        inx,
+                        chunk_shape,
+                        self.offset,
+                        inner_stops,
+                        strict=True,
                     )
-                ]
+                ],
             )
             inner_chunk = Chunk(
                 [
                     slice(slc.start - off, slc.stop - off)
-                    for slc, off in zip(outer_chunk, self.offset)
-                ]
+                    for slc, off in zip(outer_chunk, self.offset, strict=True)
+                ],
             )
             results.append((outer_chunk, inner_chunk))
 

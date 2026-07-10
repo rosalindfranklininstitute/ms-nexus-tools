@@ -5,15 +5,12 @@
 from typing import Any
 
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 import logging
 import itertools
 
 import numpy as np
 import scipy
-
-from tqdm import tqdm
 
 
 from datargs import (
@@ -35,10 +32,8 @@ from .mass_range_args import (
 )
 from ..lib.query_source import AbstractQuerySource, UnsupportedDataError
 from ..lib.bounds import Chunk
-from ..lib.chunker import count_chunks_to_cover
-from ..lib.filter import MassRangeTotalImage, Accumulator
+from ..lib.mz_filter import MassRangeTotalImage, Accumulator
 from ..lib.image import OriginLocation, adjust_origin
-from ..lib.nxs import NexusFile
 from ..lib.utils import slice_len, count_digits
 from ..lib.normalisation import Norm, normalise
 from . import (
@@ -47,10 +42,6 @@ from . import (
     image_and_spectrum_plot as nxisp,
     kendrick_mass_defect_plot as nxkdm,
 )
-
-from icecream import ic, install
-
-install()
 
 logger = logging.getLogger(__name__)
 
@@ -87,14 +78,14 @@ class ProcessArgs(
 
     scaling: Norm = arg_field(
         doc="The scaling to use within each image.",
-        choices=[t for t in Norm],
+        choices=list(Norm),
         default=Norm.NONE,
     )
 
     accumulator: Accumulator = arg_field(
         "--acc",
         doc="The method used to accumulate each image and spectra.",
-        choices=[t for t in Accumulator],
+        choices=list(Accumulator),
         default=Accumulator.TIC,
     )
 
@@ -109,7 +100,8 @@ class ProcessArgs(
     )
 
     plot_total_image: bool = arg_field(
-        action="store_true", doc="If present will also output the image for all pixels."
+        action="store_true",
+        doc="If present will also output the image for all pixels.",
     )
 
     plot_kdm: bool = arg_field(
@@ -119,7 +111,7 @@ class ProcessArgs(
 
     origin: OriginLocation = arg_field(
         doc="The location of the origin in the images.",
-        choices=[t for t in OriginLocation],
+        choices=list(OriginLocation),
         default=OriginLocation.UPPER_LEFT,
     )
 
@@ -151,13 +143,13 @@ class ProcessArgs(
         """,
         action="store",
         default=0,
-        choices=[i for i in range(5)],
+        choices=list(range(5)),
     )
 
     query_source: AbstractQuerySource = no_arg_field(default=None)
 
 
-def process(args: ProcessArgs, config: dict[str, Any] = {}):
+def process(args: ProcessArgs, config: dict[str, Any] = {}) -> None:
 
     assert args.in_path.exists(), f"The input file {args.in_path} was not found"
 
@@ -179,7 +171,8 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
 
         layer_slice = args.calculate_layer_slice(shape[0])
         width_slice, height_slice = args.calculate_width_and_height_slice(
-            shape[1], shape[2]
+            shape[1],
+            shape[2],
         )
         mass_slice = args.calculate_mass_slice(mass_values)
 
@@ -192,7 +185,8 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
         )
 
         centre_data, centre_images = args.get_centre_filters(
-            data_shape[1:], mass_values
+            data_shape[1:],
+            mass_values,
         )
         range_data, range_images = args.get_mass_filters(data_shape[1:], mass_values)
 
@@ -201,7 +195,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
 
         bins = set()
         for image in mass_images:
-            bins.update([bb for bb in image.range()])
+            bins.update(list(image.range()))
         bins: list[int] = sorted(bins)
         xy = [
             (x, y)
@@ -251,29 +245,29 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                     )
                 except RuntimeError:
                     logger.warning(
-                        "Requested an accumulated image, but there was no data for the masses specified."
+                        "Requested an accumulated image, but there was no data for the masses specified.",
                     )
 
             try:
 
-                def total_spectra():
+                def total_spectra(ll=ll) -> np.ndarray:
                     spectra = nx.accumulated_spectrum(args.accumulator, ll)
                     return normalise(spectra, args.scaling)
 
-                def total_images():
+                def total_images(ll=ll) -> np.ndarray:
                     image = nx.accumulated_image(args.accumulator, ll)
                     if abs(args.subpixels - 1.0) < 1e-2:
                         return adjust_origin(
-                            normalise(image, args.scaling), args.origin
+                            normalise(image, args.scaling),
+                            args.origin,
                         )
-                    else:
-                        return scipy.ndimage.zoom(
-                            adjust_origin(normalise(image, args.scaling), args.origin),
-                            zoom=args.subpixels,
-                            order=args.interpolation_order,
-                            mode="constant",
-                            cval=0.0,
-                        )
+                    return scipy.ndimage.zoom(
+                        adjust_origin(normalise(image, args.scaling), args.origin),
+                        zoom=args.subpixels,
+                        order=args.interpolation_order,
+                        mode="constant",
+                        cval=0.0,
+                    )
 
                 filename = f"{title}.layer_{ll + 1:0{layer_digits}}.{args.accumulator.value}_{args.scaling.value}"
                 norm_title = (
@@ -289,7 +283,8 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                     total_spectra_data = np.array([mass_values, total_spectra()]).T
 
                     np.savetxt(
-                        args.out_dir / f"{filename}.spectrum.txt", total_spectra_data
+                        args.out_dir / f"{filename}.spectrum.txt",
+                        total_spectra_data,
                     )
 
                 if args.plot_total_image:
@@ -299,7 +294,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                             total_images(),
                             args.out_dir / f"{filename}.image.png",
                             plot_args=tic_config,
-                        )
+                        ),
                     )
 
                 if args.plot_total_spectrum:
@@ -310,7 +305,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                             total_spectra(),
                             args.out_dir / f"{filename}.spectrum.png",
                             plot_args=ts_config,
-                        )
+                        ),
                     )
 
                 if args.plot_kdm:
@@ -322,9 +317,9 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
                             args.out_dir / f"{filename}.kdm.png",
                             normalisation=nxkdm.Normalisation.QUADRATIC,
                             plot_args=kdm_config,
-                        )
+                        ),
                     )
             except UnsupportedDataError:
                 logger.warning(
-                    f"{args.query_source.name} does not support {args.accumulator.value} data for the total image or spectra"
+                    f"{args.query_source.name} does not support {args.accumulator.value} data for the total image or spectra",
                 )

@@ -1,8 +1,9 @@
 # SPDX-FileCopyrightText: 2026 Duncan McDougall <duncan.mcdougall@rfi.ac.uk>
 #
 # SPDX-License-Identifier: Apache-2.0
+import h5py
 
-from typing import Any, Self, NamedTuple
+from typing import Any, NamedTuple
 from dataclasses import dataclass
 from pathlib import Path
 import numpy as np
@@ -11,7 +12,7 @@ import numpy.typing as npt
 from .bounds import Shape, Chunk
 from .contained_bounds import ContainedBounds
 from .chunker import Chunker
-from .filter import Accumulator
+from .mz_filter import Accumulator
 
 from nexusformat.nexus import NXentry, NXfield, NXdata, nxload
 from nexusformat.nexus.tree import (
@@ -37,7 +38,7 @@ class NxAxis:
         indices: list[int],
         unit: str | None = None,
         chunk_shape: Shape | None = None,
-    ):
+    ) -> "NxAxis":
         field = NXfield(values, name=name, chunks=chunk_shape)
         if unit is not None:
             field.attrs["unit"] = unit
@@ -55,7 +56,7 @@ class NxAxis:
         chunks: Shape | None = None,
         unit: str | None = None,
         fillvalue: int | float | None = None,
-    ):
+    ) -> "NxAxis":
         field = NXfield(
             name=name,
             dtype=dtype,
@@ -70,7 +71,7 @@ class NxAxis:
 
         return NxAxis(name=name, indices=indices, field=field)
 
-    def add_to_group(self, group: NXdata):
+    def add_to_group(self, group: NXdata) -> None:
         group.attrs[f"{self.name}_indices"] = self.indices
         group[self.name] = self.field
 
@@ -82,7 +83,9 @@ class NxAxis:
 
     def copy_with_incremented_indices(self, inc: int) -> "NxAxis":
         return NxAxis(
-            name=self.name, indices=[i + inc for i in self.indices], field=self.field
+            name=self.name,
+            indices=[i + inc for i in self.indices],
+            field=self.field,
         )
 
 
@@ -96,7 +99,7 @@ class NxAxes(list[list[NxAxis]]):
             results.extend(v)
         return results
 
-    def add_to_group(self, group: NXdata):
+    def add_to_group(self, group: NXdata) -> None:
         group.attrs["axes"] = self.default_list()
         for ax in self.list_all():
             ax.add_to_group(group)
@@ -124,32 +127,41 @@ class NexusFile:
         else:
             self.root = self._file["entry"]
 
-    def as_context(self):
+    def close(self) -> None:
+        self._file.nxfile.close()
+
+    def as_context(self) -> h5py.File:
         return self._file.nxfile
 
-    def _get_instrument(self):
+    def _get_instrument(self) -> NXinstrument:
         return self.root["instrument"]
 
-    def _set_instrument(self, value: NXinstrument):
+    def _set_instrument(self, value: NXinstrument) -> None:
         assert isinstance(value, NXinstrument)
         self.root["instrument"] = value
 
     instrument = property(
-        _get_instrument, _set_instrument, None, "The instrument group"
+        _get_instrument,
+        _set_instrument,
+        None,
+        "The instrument group",
     )
 
-    def _get_experiment(self):
+    def _get_experiment(self) -> NXparameters:
         return self.root["experiment"]
 
-    def _set_experiment(self, value: NXparameters):
+    def _set_experiment(self, value: NXparameters) -> None:
         assert isinstance(value, NXparameters)
         self.root["experiment"] = value
 
     experiment = property(
-        _get_experiment, _set_experiment, None, "The experiment group"
+        _get_experiment,
+        _set_experiment,
+        None,
+        "The experiment group",
     )
 
-    def link_data(self, data_path: str):
+    def link_data(self, data_path: str) -> None:
         assert self._mode != "r"
 
         signal_path = f"{data_path}/signal"
@@ -159,14 +171,11 @@ class NexusFile:
         errors_path = f"{data_path}/errors"
         weights_path = f"{data_path}/weights"
 
-        def entry_or_none(path):
-            self.root[path] if path in self.root else None
-
         self.root["data"] = NXdata(
             NXlinkfield(signal=self.root[signal_path]),
-            axes=entry_or_none(axes_path),
-            errors=entry_or_none(errors_path),
-            weights=entry_or_none(weights_path),
+            axes=self.root.get(axes_path, None),
+            errors=self.root.get(errors_path, None),
+            weights=self.root.get(weights_path, None),
         )
 
     def set_data(
@@ -189,7 +198,7 @@ class NexusFile:
         weights: NXfield | None = None,
     ) -> NXsubentry:
         self.root[name] = NXsubentry(
-            NXdata(signal=field, errors=errors, weight=weights)
+            NXdata(signal=field, errors=errors, weight=weights),
         )
         axes.add_to_group(self.root[name]["data"])
         return self.root[name]
@@ -220,7 +229,6 @@ def create_chunked_subentry(
     nxs: NexusFile,
     name: str,
     field_options: FieldOptions,
-    memory_shape: Shape,
     data_shape: Shape,
     priorities: Shape,
     axes: NxAxes,
@@ -231,7 +239,7 @@ def create_chunked_subentry(
     chunks = Chunker.from_max_item_count(
         data_shape=data_shape,
         priorities=priorities,
-        items_per_chunk=field_options.max_items_per_chunk,
+        items_per_chunk=field_options.max_bytes_per_chunk,
     )
     subentry = nxs.create_subentry(
         name,
@@ -275,7 +283,7 @@ def write_from_data(
                     values=np.arange(1, data.shape[0] + 1, 1.0),
                     name="layer",
                     indices=[1],
-                )
+                ),
             ],
             [
                 NxAxis.create(
@@ -283,7 +291,7 @@ def write_from_data(
                     name="x",
                     unit="micron",
                     indices=[2],
-                )
+                ),
             ],
             [
                 NxAxis.create(
@@ -291,10 +299,10 @@ def write_from_data(
                     name="y",
                     unit="micron",
                     indices=[2],
-                )
+                ),
             ],
             [NxAxis.create(values=mass, name="mass", unit=mass_unit, indices=[3])],
-        ]
+        ],
     )
 
     nxs = NexusFile(out_path, mode="w")
@@ -327,7 +335,7 @@ def create_standard_file(
     out_chunk: Chunk,
     out_path: Path,
     axes: NxAxes | None = None,
-    field_options=FieldOptions(
+    field_options=FieldOptions(  # noqa: B008
         compression="gzip",
         compression_opts=4,
         max_bytes_per_chunk=1024 * 1024 * 8,
@@ -344,30 +352,30 @@ def create_standard_file(
                         name="layer",
                         values=out_chunk.arange(0),
                         indices=[0],
-                    )
+                    ),
                 ],
                 [
                     NxAxis.create(
                         name="x",
                         values=out_chunk.arange(1),
                         indices=[1],
-                    )
+                    ),
                 ],
                 [
                     NxAxis.create(
                         name="y",
                         values=out_chunk.arange(2),
                         indices=[2],
-                    )
+                    ),
                 ],
                 [
                     NxAxis.create(
                         name="mass",
                         values=out_chunk.arange(3),
                         indices=[3],
-                    )
+                    ),
                 ],
-            ]
+            ],
         )
     acc_count = len(Accumulator)
     total_axes = [
@@ -376,13 +384,11 @@ def create_standard_file(
                 name="accumulator",
                 values=[t.value for t in Accumulator],
                 indices=[0],
-            )
-        ]
+            ),
+        ],
     ]
     for axis_set in axes:
-        inner_list = []
-        for ax in axis_set:
-            inner_list.append(ax.copy_with_incremented_indices(1))
+        inner_list = [ax.copy_with_incremented_indices(1) for ax in axis_set]
         total_axes.append(inner_list)
 
     nxs = NexusFile(out_path, mode="w")
@@ -390,7 +396,6 @@ def create_standard_file(
         nxs,
         "spectra",
         field_options=field_options,
-        memory_shape=cbounds.outer_shape,
         data_shape=cbounds.inner_shape,
         priorities=(3, 2, 2, 1),
         axes=axes,
@@ -400,7 +405,6 @@ def create_standard_file(
         nxs,
         "total_spectra",
         field_options=field_options,
-        memory_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
         data_shape=(acc_count, cbounds.inner_shape[0], cbounds.inner_shape[3]),
         priorities=(3, 2, 1),
         axes=NxAxes([total_axes[0], total_axes[1], total_axes[4]]),
@@ -410,7 +414,6 @@ def create_standard_file(
         nxs,
         "images",
         field_options=field_options,
-        memory_shape=cbounds.outer_shape,
         data_shape=cbounds.inner_shape,
         priorities=(3, 1, 1, 2),
         axes=axes,
@@ -420,12 +423,6 @@ def create_standard_file(
         nxs,
         "total_images",
         field_options=field_options,
-        memory_shape=(
-            acc_count,
-            cbounds.inner_shape[0],
-            cbounds.inner_shape[1],
-            cbounds.inner_shape[2],
-        ),
         data_shape=(
             acc_count,
             cbounds.inner_shape[0],

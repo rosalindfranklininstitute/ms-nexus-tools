@@ -4,7 +4,7 @@
 
 from . import bounds as bounds
 from . import chunker as chunker
-from . import filter as filter
+from . import mz_filter as mz_filter
 from . import image as image
 from . import nxs as nxs
 from . import utils as utils

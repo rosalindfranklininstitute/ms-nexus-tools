@@ -9,7 +9,7 @@ from ..api import data_query
 from ..lib.nxs_query_source import NxsQuerySource
 
 
-def query():
+def query() -> None:
     partial_args = data_query.ProcessArgs.parse_config("query")
     process_args = data_query.ProcessArgs.parse_interactive(
         "query",
@@ -32,7 +32,7 @@ class NxsFileTypes(datargs.FileDetails):
         return in_path.parent
 
 
-def bulk_query():
+def bulk_query() -> None:
     datargs.process_bulk(
         "query",
         data_query.ProcessArgs,

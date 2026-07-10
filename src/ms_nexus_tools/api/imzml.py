@@ -17,8 +17,6 @@ from datargs import arg_field, FilePathType, ConfigFileArgs, InteractiveArgs, Ar
 
 from ..lib.nxs import NexusFile
 
-from icecream import ic
-
 
 @dataclass
 class ProcessArgs(ConfigFileArgs, InteractiveArgs):
@@ -48,7 +46,7 @@ class ProcessArgs(ConfigFileArgs, InteractiveArgs):
     )
 
 
-def process(args: ProcessArgs, config: dict[str, Any] = {}):
+def process(args: ProcessArgs, config: dict[str, Any] = {}) -> None:
 
     nx_file = NexusFile(args.in_path, mode="r")
 
@@ -68,14 +66,13 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}):
             xyz = [
                 (x, y, z)
                 for x, y, z in itertools.product(
-                    range(shape[1]), range(shape[2]), range(shape[0])
+                    range(shape[1]),
+                    range(shape[2]),
+                    range(shape[0]),
                 )
             ]
             for x, y, z in tqdm(xyz):
-                if args.one_indexed:
-                    coords = (x + 1, y + 1, z + 1)
-                else:
-                    coords = (x, y, z)
+                coords = (x + 1, y + 1, z + 1) if args.one_indexed else (x, y, z)
                 writer.addSpectrum(
                     mz,
                     nx.root.entry.spectra.data.signal[z, x, y, :].astype(np.float32),

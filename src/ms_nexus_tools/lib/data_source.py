@@ -1,23 +1,18 @@
 # SPDX-FileCopyrightText: 2026 Duncan McDougall <duncan.mcdougall@rfi.ac.uk>
 #
 # SPDX-License-Identifier: Apache-2.0
-from ms_nexus_tools.lib.dtypes import Any1D, Int1D32, Intp1D
+from ms_nexus_tools.lib.dtypes import Any1D, Intp1D
 
 from contextlib import AbstractContextManager
 from typing import Any, Callable, NamedTuple, Sequence
 from abc import abstractmethod
-from pathlib import Path
 from dataclasses import dataclass
 from enum import Enum
 
 import numpy as np
 import numpy.typing as npt
-import sparse
 
 from .bounds import Chunk, Shape
-from .exceptions import UnsupportedDataError
-
-from icecream import ic
 
 
 class AxisDensity(Enum):
@@ -33,6 +28,17 @@ class Axis:
     density: AxisDensity
     dtype: npt.DTypeLike
     units: str | None = None
+
+
+class UnknownAxisError(Exception):
+    def __init__(self, name: str, density: AxisDensity | None = None):
+        match density:
+            case None:
+                super().__init__(f"Unknown axis: {name}")
+            case AxisDensity.CONTINUOUS:
+                super().__init__(f"Unknown continuous axis: {name}")
+            case AxisDensity.SPARSE:
+                super().__init__(f"Unknown sparse axis: {name}")
 
 
 class DataShape(NamedTuple):
@@ -90,7 +96,7 @@ class MultiCOO(NamedTuple):
         if isinstance(axis_acc, Sequence):
             axis = [
                 f.reduceat(a, unique_inds, dtype=self.signal.dtype)
-                for f, a in zip(axis_acc, self.axis)
+                for f, a in zip(axis_acc, self.axis, strict=True)
             ]
         else:
             axis = [
@@ -101,7 +107,9 @@ class MultiCOO(NamedTuple):
         return MultiCOO(
             coords=coords,
             signal=signal_acc.reduceat(
-                self.signal, unique_inds, dtype=self.signal.dtype
+                self.signal,
+                unique_inds,
+                dtype=self.signal.dtype,
             ),
             axis=axis,
         ), counts
@@ -113,21 +121,18 @@ class AbstractDataSource(AbstractContextManager):
         """
         Returns a dictionary of values that will be stored as the instrament metadata.
         """
-        pass
 
     @abstractmethod
     def experiment_metadata(self) -> dict[str, Any]:
         """
         Returns a dictionary of values that will be stored as the experiment metadata.
         """
-        pass
 
     @abstractmethod
     def shape(self) -> DataShape:
         """
         Return the shape of the data.
         """
-        pass
 
     @abstractmethod
     def signal_type(self) -> npt.DTypeLike:
@@ -144,14 +149,12 @@ class AbstractDataSource(AbstractContextManager):
         'images':   (1,1,2) -> (32,32,1)
         'spectra':  (2,2,1) -> (1,1,184000)
         """
-        pass
 
     @abstractmethod
     def chunk_read_count(self, memory_chunk: Shape) -> int:
         """
         Returns the number of read operations needed to fill the provided memory chunk.
         """
-        pass
 
     @abstractmethod
     def axis_definitions(self) -> list[Axis]:
@@ -165,14 +168,12 @@ class AbstractDataSource(AbstractContextManager):
         if it is only peaks:
         axis(2) : Axis('mz', 2, [0,1], SPARSE, 'mz')
         """
-        pass
 
     @abstractmethod
     def continuous_axis_values(self, axis: Axis) -> np.ndarray:
         """
         Returns the values for the specified continuous axis.
         """
-        pass
 
     @abstractmethod
     def sparse_axis_edges(self, axis: Axis) -> np.ndarray:
@@ -180,7 +181,6 @@ class AbstractDataSource(AbstractContextManager):
         Returns the bin edges used to histogram the given sparse axis.
         This is used for generting the output accumulations accros this axis, if required.
         """
-        pass
 
     @abstractmethod
     def output_accumulations(self) -> dict[str, tuple[str, ...]]:
@@ -192,7 +192,6 @@ class AbstractDataSource(AbstractContextManager):
         'total_images':     ('mz') # Accumulate over the spectra
         'total_spectra':    ('x','y') # Accumulate over the images
         """
-        pass
 
     @abstractmethod
     def fill_chunk(
@@ -220,4 +219,3 @@ class AbstractDataSource(AbstractContextManager):
         -> return_data.shape[0:-1] == self.shape() and return_data.shape[-1] = len(fill_axis)+1
 
         """
-        pass

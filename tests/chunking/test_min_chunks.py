@@ -2,7 +2,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-import math
 
 from hypothesis import given, strategies as st
 
@@ -19,7 +18,9 @@ from ms_nexus_tools.lib.chunker import Chunker
 )
 def test_priority_bounds(x, y, z, count):
     chunker = Chunker.from_min_chunks(
-        data_shape=(x, y, z), priorities=(1, 2, 3), chunk_count=count
+        data_shape=(x, y, z),
+        priorities=(1, 2, 3),
+        chunk_count=count,
     )
 
     # Test priorities
@@ -51,7 +52,9 @@ def test_priority_bounds(x, y, z, count):
 )
 def test_bounds(a, b, c, x, y, z, count):
     chunker = Chunker.from_min_chunks(
-        data_shape=(x, y, z), priorities=(a, b, c), chunk_count=count
+        data_shape=(x, y, z),
+        priorities=(a, b, c),
+        chunk_count=count,
     )
 
     if np.prod(chunker.data_shape) >= count:
@@ -74,7 +77,9 @@ def test_bounds(a, b, c, x, y, z, count):
 def test_2_shared_priorities(count):
 
     chunker = Chunker.from_min_chunks(
-        data_shape=(100, 100, 100), priorities=(1, 1, 2), chunk_count=count
+        data_shape=(100, 100, 100),
+        priorities=(1, 1, 2),
+        chunk_count=count,
     )
 
     assert chunker.chunk_shape[0] == chunker.chunk_shape[1]
@@ -82,8 +87,7 @@ def test_2_shared_priorities(count):
     assert chunker.chunk_shape[0] >= max(chunker.data_shape[0] // count, 1)
 
     if count < 10_000:  # 100*100
-        chunker.chunk_shape[2] == 100
+        assert chunker.chunk_shape[2] == 100
     else:
-        chunker.chunk_shape[2] >= count / (
-            10_000  # 100*100
-        )
+        print(chunker, count)
+        assert chunker.chunk_shape[2] >= 10_000 / count

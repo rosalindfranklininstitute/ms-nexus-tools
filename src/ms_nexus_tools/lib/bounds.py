@@ -15,13 +15,13 @@ class Bounds(list[int]):
 
     @property
     def shape(self) -> Shape:
-        return tuple([c for c in self])
+        return tuple(self)
 
     @property
     def total(self) -> float:
         return reduce(lambda x, y: x * y, self)
 
-    def full_chunk(self):
+    def full_chunk(self) -> "Chunk":
         return Chunk([slice(0, c) for c in self])
 
 

@@ -9,12 +9,16 @@ import h5py as h5
 from ..lib import print_group
 
 
-def inspect():
+def inspect() -> None:
 
     parser = argparse.ArgumentParser(prog="inspect")
     parser.add_argument("filename", help="The file")
     parser.add_argument(
-        "-d", "--depth", default=None, help="The maximum depth to print.", type=int
+        "-d",
+        "--depth",
+        default=None,
+        help="The maximum depth to print.",
+        type=int,
     )
 
     args = parser.parse_args()

@@ -12,8 +12,6 @@ import numpy as np
 from ms_nexus_tools.lib.chunker import Chunker
 from ms_nexus_tools.lib.bounds import Shape
 
-from icecream import ic
-
 
 @given(
     st.integers(min_value=1, max_value=100),
@@ -23,7 +21,9 @@ from icecream import ic
 )
 def test_priority_bounds(x, y, z, count):
     chunker = Chunker.from_max_item_count(
-        data_shape=(x, y, z), priorities=(1, 2, 3), items_per_chunk=count
+        data_shape=(x, y, z),
+        priorities=(1, 2, 3),
+        items_per_chunk=count,
     )
 
     # Test priorities
@@ -54,7 +54,9 @@ def test_priority_bounds(x, y, z, count):
 )
 def test_bounds(a, b, c, x, y, z, count):
     chunker = Chunker.from_max_item_count(
-        data_shape=(x, y, z), priorities=(a, b, c), items_per_chunk=count
+        data_shape=(x, y, z),
+        priorities=(a, b, c),
+        items_per_chunk=count,
     )
 
     if np.prod(chunker.data_shape) >= count:
@@ -71,14 +73,18 @@ def test_bounds(a, b, c, x, y, z, count):
         )
 
         for j in range(i + 1, 3):
-            if chunker.priorities[i] < chunker.priorities[j]:
-                if chunker.data_shape[i] >= chunker.data_shape[j]:
-                    if count > chunker.data_shape[j]:
-                        assert chunker.chunk_shape[i] >= chunker.chunk_shape[j]
-            elif chunker.priorities[i] > chunker.priorities[j]:
-                if chunker.data_shape[i] <= chunker.data_shape[j]:
-                    if count > chunker.data_shape[i]:
-                        assert chunker.chunk_shape[i] <= chunker.chunk_shape[j]
+            if (
+                chunker.priorities[i] < chunker.priorities[j]
+                and chunker.data_shape[i] >= chunker.data_shape[j]
+                and count > chunker.data_shape[j]
+            ):
+                assert chunker.chunk_shape[i] >= chunker.chunk_shape[j]
+            elif (
+                chunker.priorities[i] > chunker.priorities[j]
+                and chunker.data_shape[i] <= chunker.data_shape[j]
+                and count > chunker.data_shape[i]
+            ):
+                assert chunker.chunk_shape[i] <= chunker.chunk_shape[j]
 
 
 @given(
@@ -92,7 +98,9 @@ def test_bounds(a, b, c, x, y, z, count):
 )
 def test_normalise(a, b, c, x, y, z, count):
     chunker = Chunker.from_max_item_count(
-        data_shape=(x, y, z), priorities=(a, b, c), items_per_chunk=count
+        data_shape=(x, y, z),
+        priorities=(a, b, c),
+        items_per_chunk=count,
     )
     chunker.normalise()
 
@@ -110,14 +118,18 @@ def test_normalise(a, b, c, x, y, z, count):
         )
 
         for j in range(i + 1, 3):
-            if chunker.priorities[i] < chunker.priorities[j]:
-                if chunker.data_shape[i] >= chunker.data_shape[j]:
-                    if count > chunker.data_shape[j]:
-                        assert chunker.chunk_shape[i] >= chunker.chunk_shape[j]
-            elif chunker.priorities[i] > chunker.priorities[j]:
-                if chunker.data_shape[i] <= chunker.data_shape[j]:
-                    if count > chunker.data_shape[i]:
-                        assert chunker.chunk_shape[i] <= chunker.chunk_shape[j]
+            if (
+                chunker.priorities[i] < chunker.priorities[j]
+                and chunker.data_shape[i] >= chunker.data_shape[j]
+                and count > chunker.data_shape[j]
+            ):
+                assert chunker.chunk_shape[i] >= chunker.chunk_shape[j]
+            elif (
+                chunker.priorities[i] > chunker.priorities[j]
+                and chunker.data_shape[i] <= chunker.data_shape[j]
+                and count > chunker.data_shape[i]
+            ):
+                assert chunker.chunk_shape[i] <= chunker.chunk_shape[j]
 
 
 @given(
@@ -127,18 +139,22 @@ def test_normalise(a, b, c, x, y, z, count):
 def test_2_shared_priorities(n, count):
 
     chunker = Chunker.from_max_item_count(
-        data_shape=(n, n, n), priorities=(1, 1, 2), items_per_chunk=count
+        data_shape=(n, n, n),
+        priorities=(1, 1, 2),
+        items_per_chunk=count,
     )
 
     assert chunker.chunk_shape[0] == chunker.chunk_shape[1]
     assert chunker.chunk_count[0] == chunker.chunk_count[1]
     assert chunker.chunk_shape[0] <= min(math.sqrt(count), chunker.data_shape[0])
 
-    if count < n * n:
-        chunker.chunk_shape[2] == n
-        chunker.chunk_count[2] == 1
+    if count <= n * n:
+        assert chunker.chunk_shape[2] == 1
+        assert chunker.chunk_count[2] == n
+    elif count // (n * n) < n:
+        assert chunker.chunk_shape[2] >= count // (n * n)
     else:
-        chunker.chunk_shape[2] >= count / (n * n)
+        assert chunker.chunk_shape[2] == n
 
 
 class MinChunksTestData(NamedTuple):

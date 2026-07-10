@@ -2,7 +2,8 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-def print_item(item, offset=""):
+
+def print_item(item, offset="") -> None:
     try:
         name = f"{item.name}:"
     except AttributeError:
@@ -13,7 +14,7 @@ def print_item(item, offset=""):
         print(f"{offset}@{at}: {item.attrs[at]}")
 
 
-def print_group(d, offset="", max_depth=-1):
+def print_group(d, offset="", max_depth=-1) -> None:
     if max_depth == 0:
         return
     if "keys" not in dir(d):
@@ -21,12 +22,12 @@ def print_group(d, offset="", max_depth=-1):
         return
     mx = len(d.keys())
     if mx < 10:
-        for k in d.keys():
+        for k in d:
             print_item(d[k], offset)
             print_group(d[k], offset=offset + "- ", max_depth=max_depth - 1)
 
     else:
-        for ii in range(0, 5):
+        for ii in range(5):
             k = d.keys()[ii]
 
             print_item(d[k], offset)

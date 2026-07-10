@@ -4,7 +4,7 @@
 
 import copy
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import NamedTuple
 from dataclasses import dataclass
 from bisect import bisect_left, bisect_right
 
@@ -14,7 +14,7 @@ from datargs import arg_field
 from . import compound as nxcomp
 
 from ..lib.bounds import Shape
-from ..lib.filter import MassRangeTotalImage, Accumulator
+from ..lib.mz_filter import MassRangeTotalImage, Accumulator
 from ..lib.image import OriginLocation, adjust_origin
 from ..lib.normalisation import norm, Norm
 
@@ -35,7 +35,9 @@ class FormulaAndRange(NamedTuple):
 
     @staticmethod
     def from_formula_and_width(
-        formula: str, width: float, mass_axis: np.ndarray
+        formula: str,
+        width: float,
+        mass_axis: np.ndarray,
     ) -> "FormulaAndRange":
         mass = nxcomp.process(nxcomp.ProcessArgs(formula)).lightest_monoisotropic_mass
         half_width = width / 2
@@ -65,7 +67,8 @@ class FormulaArgs:
     )
 
     def calculate_formulae_ranges(
-        self, mass_values: np.ndarray
+        self,
+        mass_values: np.ndarray,
     ) -> list[FormulaAndRange]:
 
         return [
@@ -74,7 +77,9 @@ class FormulaArgs:
         ]
 
     def get_formulae_filters(
-        self, image_shape: Shape, mass_values: np.ndarray
+        self,
+        image_shape: Shape,
+        mass_values: np.ndarray,
     ) -> tuple[list[FormulaAndRange], list[MassRangeTotalImage]]:
 
         data = self.calculate_formulae_ranges(mass_values)
@@ -100,13 +105,13 @@ class FormulaArgs:
         name: str,
         write_txt: bool,
         isp_config: ISPKwArgs,
-    ):
+    ) -> None:
 
         isp_config = copy.deepcopy(isp_config)
 
         assert len(formulae_data) == len(formulae_images)
 
-        for fd, fi in zip(formulae_data, formulae_images):
+        for fd, fi in zip(formulae_data, formulae_images, strict=True):
             filename = f"{name}.{accumulator.value}_{normalisation.value}.{fd.formula}"
             title = f"{name}: ({accumulator.value}/{normalisation.value}): {fd.formula}"
 
@@ -114,7 +119,7 @@ class FormulaArgs:
                 AxCommand(
                     command="axvline",
                     kwargs=dict(x=fd.mass, linewidth=0.5, linestyle=":"),
-                )
+                ),
             )
             scaling = norm(fi.spectrum(accumulator), normalisation)
             isp_process(
@@ -125,7 +130,7 @@ class FormulaArgs:
                     adjust_origin(fi.image(accumulator) / scaling, origin),
                     target_dir / f"{filename}.png",
                     plot_args=isp_config,
-                )
+                ),
             )
 
             if write_txt:
@@ -135,7 +140,7 @@ class FormulaArgs:
                 )
 
                 total_spectra_data = np.array(
-                    [mass_values[fi.slice()], fi.spectrum(accumulator) / scaling]
+                    [mass_values[fi.slice()], fi.spectrum(accumulator) / scaling],
                 ).T
 
                 np.savetxt(target_dir / f"{filename}.spectrum.txt", total_spectra_data)

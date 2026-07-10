@@ -47,8 +47,7 @@ def format_bytes(n: Number, digits: int = 2) -> str:
     prefix = "-" if negative else ""
     if value.is_integer():
         return f"{prefix}{int(value)}{units[i]}"
-    else:
-        return f"{prefix}{value:.{digits}f}{units[i]}"
+    return f"{prefix}{value:.{digits}f}{units[i]}"
 
 
 def parse_bytes(bytes_str) -> int:
@@ -81,9 +80,14 @@ def parse_bytes(bytes_str) -> int:
     2
 
     """
-
     values = dict(
-        Kb=1024, Mb=1024**2, Gb=1024**3, Tb=1024**4, Pb=1024**5, Eb=1024**6, b=1
+        Kb=1024,
+        Mb=1024**2,
+        Gb=1024**3,
+        Tb=1024**4,
+        Pb=1024**5,
+        Eb=1024**6,
+        b=1,
     )
 
     bytes_str = bytes_str.strip()
@@ -143,8 +147,7 @@ def slice_len(slc: slice) -> int:
 
     if slc.start is None:
         return slc.stop // inc
-    else:
-        return (slc.stop - slc.start) // inc
+    return (slc.stop - slc.start) // inc
 
 
 def slice_range(slc: slice) -> range:
@@ -161,12 +164,11 @@ def slice_range(slc: slice) -> range:
     """
     if slc.start is None and slc.step is None:
         return range(slc.stop)
-    elif slc.step is None:
+    if slc.step is None:
         return range(slc.start, slc.stop)
-    elif slc.start is None:
+    if slc.start is None:
         return range(0, slc.stop, slc.step)
-    else:
-        return range(slc.start, slc.stop, slc.step)
+    return range(slc.start, slc.stop, slc.step)
 
 
 def slice_from_values(start: Number, stop: Number, values: Number1D) -> slice:
@@ -191,11 +193,11 @@ class NotTqdm:
         for item in self.iterator:
             yield item
 
-    def update(self):
+    def update(self) -> None:
         pass
 
 
-def json_add(filename, *keys, value):
+def json_add(filename, *keys, value) -> None:
     old_data = {}
     if filename.exists():
         with open(filename, "r") as fd:
@@ -252,9 +254,8 @@ def reduce_shape(shape: Shape, axis=None) -> Shape:
     """
     if axis is None:
         return shape
-    else:
-        if isinstance(axis, int):
-            axis = [axis]
-        ndim = len(shape)
-        axis = np.sort([a if a >= 0 else a + ndim for a in axis])
-        return Shape(v for ii, v in enumerate(shape) if ii not in axis)
+    if isinstance(axis, int):
+        axis = [axis]
+    ndim = len(shape)
+    axis = np.sort([a if a >= 0 else a + ndim for a in axis])
+    return Shape(v for ii, v in enumerate(shape) if ii not in axis)

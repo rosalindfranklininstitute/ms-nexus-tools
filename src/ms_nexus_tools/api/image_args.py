@@ -15,22 +15,21 @@ from datargs import arg_field
 def _cycle(cycle: int | None, length: int) -> int:
     if cycle is None:
         return length
-    elif cycle < 0:
+    if cycle < 0:
         result = length + cycle
         if result < 0:
             raise IndexError(
-                f"Index of {cycle} was greater than the dimension width of {length}"
+                f"Index of {cycle} was greater than the dimension width of {length}",
             )
         return result
-    elif cycle > length:
+    if cycle > length:
         raise IndexError(
-            f"Index of {cycle} was greater than the dimension width of {length}"
+            f"Index of {cycle} was greater than the dimension width of {length}",
         )
-    else:
-        return cycle
+    return cycle
 
 
-def _slice(start: int, end: int | None, length):
+def _slice(start: int, end: int | None, length) -> slice:
     start = _cycle(start, length)
     end = _cycle(end, length)
     return slice(start, end)
@@ -87,11 +86,15 @@ class WidthAndHeightSliceArgs:
     )
 
     def calculate_width_and_height_slice(
-        self, width: int, height: int
+        self,
+        width: int,
+        height: int,
     ) -> tuple[slice, slice]:
 
         return _slice(self.start_width, self.end_width, width), _slice(
-            self.start_height, self.end_height, height
+            self.start_height,
+            self.end_height,
+            height,
         )
 
 
@@ -107,7 +110,7 @@ class MassSliceArgs:
         "--mass-value",
         doc="If present treat the start and end mass values as masses instead of indices.",
         defer=True,
-        choices=[t for t in MassMeasure],
+        choices=list(MassMeasure),
         default=MassMeasure.MASS,
     )
 
@@ -126,7 +129,8 @@ class MassSliceArgs:
     )
 
     def calculate_mass_slice(
-        self, mass_axis: Sequence[int | float] | np.ndarray
+        self,
+        mass_axis: Sequence[int | float] | np.ndarray,
     ) -> slice:
         match self.use_mass:
             case MassMeasure.MASS:

@@ -12,18 +12,23 @@ class SparseSampling:
     def __post_init__(self):
         if self.area_positions.shape != self.area_volumes.shape:
             raise ValueError(
-                "area_positions and area_volumes should have the same shape."
+                "area_positions and area_volumes should have the same shape.",
             )
         if mx := np.max(self.area_positions) != 100:
             raise ValueError(f"area_positions should end at 100%, but found {mx:.2f}%")
 
-    def get_edges(self, min_value: float, max_value: float, count: int):
+    def get_edges(
+        self,
+        min_value: float,
+        max_value: float,
+        count: int,
+    ) -> np.ndarray[tuple[int]]:
         count = count // self.downsample_count
         ends = np.concatenate(
             [
                 [min_value],
                 (max_value - min_value) * self.area_positions / 100.0 + min_value,
-            ]
+            ],
         )
         return np.concatenate(
             [
@@ -37,5 +42,5 @@ class SparseSampling:
                     for ii in range(len(self.area_positions))
                 ],
                 [max_value],
-            ]
+            ],
         )

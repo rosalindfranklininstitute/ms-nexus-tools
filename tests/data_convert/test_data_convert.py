@@ -4,21 +4,17 @@
 from functools import reduce
 from ms_nexus_tools.lib.data_source import Axis, AxisDensity
 
-import math
 from pathlib import Path
-import os
 
 import numpy as np
 import h5py
 
-from ms_nexus_tools.lib.chunker import Chunker, count_chunks_to_cover
+from ms_nexus_tools.lib.chunker import count_chunks_to_cover
 from ms_nexus_tools.api import data_convert
 
 from . import man_source
 
 import pytest
-
-from icecream import ic
 
 
 @pytest.fixture(scope="module")
@@ -26,13 +22,13 @@ def man_data():
     return man_source.ManData()
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def nx_file():
     filename = Path(__file__).parent / "test.nxs"
     if filename.exists():
-        os.remove(filename)
+        filename.unlink()
     yield filename
-    os.remove(filename)
+    filename.unlink()
 
 
 def check_data_correct(fle, man_data, max_chunk_item_count):
@@ -52,13 +48,6 @@ def check_data_correct(fle, man_data, max_chunk_item_count):
         assert np.all(fle[f"/entry/{data_name}/data"].attrs["axes"] == ["x", "y", "mz"])
 
         assert fle[f"/entry/{data_name}/data/signal"].shape == man_data.shape
-        if not np.all(
-            fle[f"/entry/{data_name}/data/signal"][:, :, :] == man_data.dense
-        ):
-            a = ic(fle[f"/entry/{data_name}/data/signal"][2, 4, 0:20])
-            b = ic(man_data.dense[2, 4, 0:20])
-            ic(a - b)
-            ic(np.sum(a), np.sum(b))
 
         assert np.all(fle[f"/entry/{data_name}/data/signal"][:, :, :] == man_data.dense)
 
@@ -228,10 +217,7 @@ def test_sparse_single_axis_single_chunk_with_mz_bin_2(nx_file, man_data):
     with h5py.File(nx_file, "r") as fle:
         for data_name in ["images", "spectra"]:
             data_part = fle[f"/entry/{data_name}/data/signal"]
-            ic(data_part.shape)
             mz_values = fle[f"/entry/{data_name}/data/mz"]
-            ic(data_part.shape)
-            ic(mz_values.shape)
             assert np.min(mz_values[:]) == 2
             assert np.max(mz_values[:]) == 240
             assert mz_values.shape == (120,)
@@ -239,7 +225,7 @@ def test_sparse_single_axis_single_chunk_with_mz_bin_2(nx_file, man_data):
             for ii in range(4):
                 assert np.all(
                     np.sum(data_part[:, :, 30 * ii : 30 * (ii + 1)], axis=2)
-                    == np.sum(man_data.dense[:, :, 60 * ii : 60 * (ii + 1)], axis=2)
+                    == np.sum(man_data.dense[:, :, 60 * ii : 60 * (ii + 1)], axis=2),
                 )
 
         assert "/entry/item_counts" in fle
@@ -286,7 +272,7 @@ def test_dense_multi_axis_single_chunk(nx_file, man_data):
             assert "error_indices" in fle[f"/entry/{data_name}/data/"].attrs
 
             assert np.all(
-                fle[f"/entry/{data_name}/data"].attrs["axes"] == ["x", "y", "mz"]
+                fle[f"/entry/{data_name}/data"].attrs["axes"] == ["x", "y", "mz"],
             )
             assert fle[f"/entry/{data_name}/data/"].attrs["x_indices"] == 0
             assert fle[f"/entry/{data_name}/data/"].attrs["time_indices"] == 0
@@ -329,7 +315,7 @@ def test_sparse_multi_continuous_axis_single_chunk(nx_file, man_data):
             assert "mz_indices" in fle[f"/entry/{data_name}/data/"].attrs
 
             assert np.all(
-                fle[f"/entry/{data_name}/data"].attrs["axes"] == ["x", "y", "mz"]
+                fle[f"/entry/{data_name}/data"].attrs["axes"] == ["x", "y", "mz"],
             )
             assert fle[f"/entry/{data_name}/data/"].attrs["x_indices"] == 0
             assert fle[f"/entry/{data_name}/data/"].attrs["time_indices"] == 0
@@ -354,7 +340,7 @@ def test_sparse_multi_continuous_axis_single_chunk(nx_file, man_data):
     Does that even make sense? 
     Or are its secondary axis always the full set of axis less than 
     its prmary axis? 
-    """
+    """,
 )
 def test_sparse_multi_sparse_axis_single_chunk():
     pass

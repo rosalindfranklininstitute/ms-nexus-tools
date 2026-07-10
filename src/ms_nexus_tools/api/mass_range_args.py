@@ -13,8 +13,8 @@ import scipy
 
 from ..lib.bounds import Shape
 from ..lib.image import OriginLocation, adjust_origin
-from ..lib.filter import MassRangeTotalImage, Accumulator
-from ..lib.normalisation import norm, Norm, IncrementalAccumulator
+from ..lib.mz_filter import MassRangeTotalImage, Accumulator
+from ..lib.normalisation import norm, Norm
 from . import compound as nxcomp
 
 from datargs import arg_field
@@ -46,7 +46,9 @@ class MassRange(NamedTuple):
 
     @staticmethod
     def from_mass_range(
-        start_mass: float, stop_mass: float, mass_axis: np.ndarray
+        start_mass: float,
+        stop_mass: float,
+        mass_axis: np.ndarray,
     ) -> "MassRange":
         start_mass_index = bisect_left(mass_axis, start_mass)
         stop_mass_index = bisect_right(mass_axis, stop_mass)
@@ -62,13 +64,15 @@ class MassRange(NamedTuple):
 
     @staticmethod
     def from_centre_and_width(
-        centre: str, width: float, mass_axis: np.ndarray
+        centre: str,
+        width: float,
+        mass_axis: np.ndarray,
     ) -> "MassRange":
         try:
             mass = float(centre)
         except ValueError:
             mass = nxcomp.process(
-                nxcomp.ProcessArgs(centre)
+                nxcomp.ProcessArgs(centre),
             ).lightest_monoisotropic_mass
 
         half_width = width / 2
@@ -102,7 +106,9 @@ class MassRangeArgs:
         ]
 
     def get_mass_filters(
-        self, image_shape: Shape, mass_values: np.ndarray
+        self,
+        image_shape: Shape,
+        mass_values: np.ndarray,
     ) -> tuple[list[MassRange], list[MassRangeTotalImage]]:
 
         data = self.calculate_mass_ranges(mass_values)
@@ -135,7 +141,9 @@ class MassCentreArgs:
         ]
 
     def get_centre_filters(
-        self, image_shape: Shape, mass_values: np.ndarray
+        self,
+        image_shape: Shape,
+        mass_values: np.ndarray,
     ) -> tuple[list[MassRange], list[MassRangeTotalImage]]:
 
         data = self.calculate_centre_ranges(mass_values)
@@ -148,9 +156,6 @@ class MassCentreArgs:
             if m.mass_index_width > 0
         ]
         return [r[0] for r in results], [r[1] for r in results]
-
-
-from icecream import ic
 
 
 def plot_mass_ranges(
@@ -166,10 +171,10 @@ def plot_mass_ranges(
     name: str,
     write_txt: bool,
     isp_config: ISPKwArgs,
-):
+) -> None:
     assert len(mass_data) == len(mass_images)
 
-    for md, mi in zip(mass_data, mass_images):
+    for md, mi in zip(mass_data, mass_images, strict=True):
         filename = f"{name}.{accumulator.value}_{normalisation.value}.{md.file_part}"
         title = f"{name}: ({accumulator.value}/{normalisation.value}): {md.title}"
 
@@ -196,7 +201,7 @@ def plot_mass_ranges(
                 AxCommand(
                     command="axvline",
                     kwargs=dict(x=marker, linewidth=0.5, linestyle=":"),
-                )
+                ),
             ]
 
         isp_process(
@@ -207,7 +212,7 @@ def plot_mass_ranges(
                 image,
                 target_dir / f"{filename}.png",
                 plot_args=config,
-            )
+            ),
         )
 
         if write_txt:
@@ -217,7 +222,7 @@ def plot_mass_ranges(
             )
 
             total_spectra_data = np.array(
-                [mass_values[mi.slice()], mi.spectrum(accumulator) / scaling]
+                [mass_values[mi.slice()], mi.spectrum(accumulator) / scaling],
             ).T
 
             np.savetxt(target_dir / f"{filename}.spectrum.txt", total_spectra_data)
@@ -234,7 +239,7 @@ def accumulate_mass_ranges(
     name: str,
     write_txt: bool,
     ip_config: IPKwArgs,
-):
+) -> None:
 
     filename = f"{name}.{accumulator.value}_{normalisation.value}.acc"
     title = f"{name}: ({accumulator.value}/{normalisation.value}): Accumumlated ranges"
@@ -267,7 +272,7 @@ def accumulate_mass_ranges(
             image,
             target_dir / f"{filename}.png",
             plot_args=ip_config,
-        )
+        ),
     )
 
     if write_txt:

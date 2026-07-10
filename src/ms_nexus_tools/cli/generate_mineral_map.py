@@ -2,7 +2,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Self
 import argparse
 import csv
 from typing import NamedTuple
@@ -23,7 +22,7 @@ class Element(NamedTuple):
     isotopes: list[Isotope]
 
 
-def element_to_str(element: Element):
+def element_to_str(element: Element) -> str:
     isotope_strings = [
         f"Isotope({i[0]},{i[1]},{i[2]})" for i in sorted(element.isotopes)
     ]
@@ -66,7 +65,9 @@ if __name__ == "__main__":
                 data[symbol].isotopes.append(Isotope(nominal, accurate, abundance))
             else:
                 data[symbol] = Element(
-                    name, symbol, [Isotope(nominal, accurate, abundance)]
+                    name,
+                    symbol,
+                    [Isotope(nominal, accurate, abundance)],
                 )
 
     with open(args.output, "w") as out_file:

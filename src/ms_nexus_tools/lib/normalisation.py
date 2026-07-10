@@ -1,13 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Duncan McDougall <duncan.mcdougall@rfi.ac.uk>
 #
 # SPDX-License-Identifier: Apache-2.0
+from typing import Any
 
 from enum import Enum
 import numpy as np
-from scipy.interpolate import PchipInterpolator
 
 from .bounds import Shape
-from .utils import reduce_shape, iterate, indices
 
 
 class Norm(Enum):
@@ -24,7 +23,7 @@ class Accumulator(Enum):
 EMPTY = np.full((1,), np.nan)
 
 
-def normalise(data, norm: Norm):
+def normalise(data: np.ndarray, norm: Norm) -> np.ndarray:
     match norm:
         case Norm.NONE:
             return data
@@ -34,7 +33,7 @@ def normalise(data, norm: Norm):
             return data / np.max(data)
 
 
-def norm(data, norm: Norm):
+def norm(data: np.ndarray, norm: Norm) -> float:
     match norm:
         case Norm.NONE:
             return 1
@@ -44,26 +43,24 @@ def norm(data, norm: Norm):
             return np.max(data)
 
 
-def _should_operate(ndims, axis):
+def _should_operate(ndims: int, axis) -> bool:
     if axis is None:
         return True
-    elif isinstance(axis, int):
+    if isinstance(axis, int):
         return axis < ndims
-    elif len(axis) != 1:
+    if len(axis) != 1:
         return True
-    else:
-        return axis[0] < ndims
+    return axis[0] < ndims
 
 
-def _operate(operation, current, new, axis):
+def _operate(operation, current, new, axis) -> Any:
     if _should_operate(len(new.shape), axis):
         inc_value = operation(new, axis=axis)
     else:
         inc_value = new
     if np.isnan(current).all():
         return inc_value
-    else:
-        return operation([current, inc_value], axis=0)
+    return operation([current, inc_value], axis=0)
 
 
 class P2Histogram:
@@ -110,22 +107,22 @@ class P2Histogram:
     def heights_for(self, percentile_inx) -> np.ndarray:
         return self.heights[*self.selectors, percentile_inx]
 
-    def add(self, x):
+    def add(self, x) -> None:
 
         if np.isscalar(x):
             if self.shape != (1,) and self.shape:
                 raise ValueError(
-                    f"Provided a scalar, but expected data with shape {self.shape}"
+                    f"Provided a scalar, but expected data with shape {self.shape}",
                 )
             x = np.array([x])
         elif isinstance(x, np.ndarray):
             if x.shape != self.shape:
                 raise ValueError(
-                    f"Provided data with shape {x.shape}, but expected a shape of {self.shape}"
+                    f"Provided data with shape {x.shape}, but expected a shape of {self.shape}",
                 )
         else:
             raise NotImplementedError(
-                "Input value must be either a scalar or and array"
+                "Input value must be either a scalar or and array",
             )
 
         if self.ii <= self.b:
@@ -185,7 +182,7 @@ class P2Histogram:
         self.ii += 1
 
     @staticmethod
-    def _parabola(q_minus, q, q_plus, d, n_minus, n_plus):
+    def _parabola(q_minus, q, q_plus, d, n_minus, n_plus) -> np.ndarray:
         return q + (
             d
             / (n_plus + n_minus)
@@ -196,14 +193,23 @@ class P2Histogram:
         )
 
     @staticmethod
-    def _linear(q_minus, q, q_plus, d_minus, d_plus, n_minus, n_plus):
+    def _linear(q_minus, q, q_plus, d_minus, d_plus, n_minus, n_plus) -> np.ndarray:
         result = np.zeros(q.shape)
         result[d_minus] = q[d_minus] - (q_minus[d_minus]) / (n_minus[d_minus])
         result[d_plus] = q[d_plus] + (q_plus[d_plus]) / (n_plus[d_plus])
         return result
 
     @staticmethod
-    def _interpolate(n_minus, n_plus, selectors, q, d, d_mask, d_minus, d_plus):
+    def _interpolate(
+        n_minus,
+        n_plus,
+        selectors,
+        q,
+        d,
+        d_mask,
+        d_minus,
+        d_plus,
+    ) -> np.ndarray:
         q_mid = q[*selectors, 1:-1]
         q_diff = np.diff(q, axis=-1)
         q_minus = q_diff[*selectors, :-1]
@@ -220,7 +226,7 @@ class P2Histogram:
 
         q_mask = (quad_q > q[*selectors, :-2]) * (q[*selectors, 2:] > quad_q) * d_mask
 
-        l_mask = (q_mask == False) * d_mask
+        l_mask = (q_mask == False) * d_mask  # noqa: E712
         if np.any(l_mask):
             l_minus = l_mask * d_minus
             l_plus = l_mask * d_plus
@@ -230,7 +236,7 @@ class P2Histogram:
         return quad_q
 
     @staticmethod
-    def percentiles(b: int):
+    def percentiles(b: int) -> np.ndarray[tuple[int]]:
         return np.linspace(0, 100, num=b + 1, endpoint=True)
 
 
@@ -240,7 +246,7 @@ class IncrementalAccumulator:
         self.tic: np.ndarray = EMPTY
         self.axis: tuple[int, ...] | None = axis
 
-    def add(self, data, axis=None):
+    def add(self, data, axis=None) -> None:
 
         axis_to_use = axis if axis is not None else self.axis
         self.max = _operate(np.max, self.max, data, axis_to_use)
@@ -253,11 +259,10 @@ class IncrementalAccumulator:
             case Accumulator.TIC | Accumulator.TIC.value:
                 return self.tic
             case _:
-                raise KeyError(f"Could not find specified accumulator ")
+                raise KeyError("Could not find specified accumulator ")
 
     def is_empty(self, index: str | Accumulator) -> bool:
         value = self[index]
         if len(value) == 1:
             return bool(np.isnan(value).all())
-        else:
-            return False
+        return False

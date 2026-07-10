@@ -1,6 +1,5 @@
 from pathlib import Path
 import json
-from dataclasses import dataclass
 from typing import Any, Callable
 import numpy as np
 import numpy.typing as npt
@@ -12,11 +11,8 @@ from ms_nexus_tools.lib.data_source import (
     MultiCOO,
     DataShape,
     AxisDensity,
+    UnknownAxisError,
 )
-from ms_nexus_tools.lib.dtypes import Int1D32
-
-import h5py
-from icecream import ic
 
 
 class ManData:
@@ -55,8 +51,7 @@ class ManData:
 
         self.shape = Shape([8, 8, 240])
         self.dense = np.zeros(self.shape)
-        count = 0
-        for pos, intensity in zip(self.total_pos.T, self.total_int):
+        for pos, intensity in zip(self.total_pos.T, self.total_int, strict=True):
             self.dense[*pos] = intensity
 
         self.density = self.total_int.shape[0] / np.prod(self.shape)
@@ -98,21 +93,15 @@ class ManSource(AbstractDataSource):
         pass
 
     def instrament_metadata(self) -> dict[str, Any]:
-        """
-        Returns a dictionary of values that will be stored as the instrament metadata.
-        """
+        """Returns a dictionary of values that will be stored as the instrament metadata."""
         return {}
 
     def experiment_metadata(self) -> dict[str, Any]:
-        """
-        Returns a dictionary of values that will be stored as the experiment metadata.
-        """
+        """Returns a dictionary of values that will be stored as the experiment metadata."""
         return {}
 
     def shape(self) -> DataShape:
-        """
-        Return the shape of the data.
-        """
+        """Return the shape of the data."""
         if self.any_sparse:
             shape = [0, 0, 0]
             for ax in self.axes.values():
@@ -123,14 +112,10 @@ class ManSource(AbstractDataSource):
                     else:
                         shape[ax.primary_axis] = ss
             return DataShape(Shape(shape), self.man_data.density)
-            # return DataShape(self.man_data.shape, self.man_data.density)
-        else:
-            return DataShape(self.man_data.shape, 1.0)
+        return DataShape(self.man_data.shape, 1.0)
 
     def signal_type(self) -> npt.DTypeLike:
-        """
-        Returns the type for data.
-        """
+        """Returns the type for data."""
         return np.int16
 
     def output_chunks(self) -> dict[str, Shape]:
@@ -144,9 +129,7 @@ class ManSource(AbstractDataSource):
         return dict(images=(1, 1, 2), spectra=(2, 2, 1))
 
     def chunk_read_count(self, memory_chunk: Shape) -> int:
-        """
-        Returns the number of read operations needed to fill the provided memory chunk.
-        """
+        """Returns the number of read operations needed to fill the provided memory chunk."""
         return np.prod(memory_chunk[0:2])
 
     def axis_definitions(self) -> list[Axis]:
@@ -163,15 +146,12 @@ class ManSource(AbstractDataSource):
         return [self.axes[ax_name] for ax_name in self.axis_order]
 
     def continuous_axis_values(self, axis: Axis) -> np.ndarray:
-        """
-        Returns the values for the specified continuous axis.
-        """
+        """Returns the values for the specified continuous axis."""
         if axis.name not in self.axes:
-            raise ValueError(f"Unknown axis requested: {axis.name}")
-        elif self.axes[axis.name].density != AxisDensity.CONTINUOUS:
-            raise ValueError(f"Unknown continuous axis requested: {axis.name}")
-        else:
-            return np.arange(self.man_data.shape[axis.primary_axis])
+            raise UnknownAxisError(axis.name)
+        if self.axes[axis.name].density != AxisDensity.CONTINUOUS:
+            raise UnknownAxisError(axis.name, AxisDensity.CONTINUOUS)
+        return np.arange(self.man_data.shape[axis.primary_axis])
 
     def sparse_axis_edges(self, axis: Axis) -> np.ndarray:
         """
@@ -179,15 +159,14 @@ class ManSource(AbstractDataSource):
         This is used for generting the output accumulations accros this axis, if required.
         """
         if axis.name not in self.axes:
-            raise ValueError(f"Unknown axis requested: {axis.name}")
-        elif self.axes[axis.name].density != AxisDensity.SPARSE:
-            raise ValueError(f"Unknown sparse axis requested: {axis.name}")
-        else:
-            return np.arange(
-                0,
-                self.man_data.shape[axis.primary_axis] + self.mz_binning,
-                self.mz_binning,
-            )
+            raise UnknownAxisError(axis.name)
+        if self.axes[axis.name].density != AxisDensity.SPARSE:
+            raise UnknownAxisError(axis.name, AxisDensity.SPARSE)
+        return np.arange(
+            0,
+            self.man_data.shape[axis.primary_axis] + self.mz_binning,
+            self.mz_binning,
+        )
 
     def output_accumulations(self) -> dict[str, tuple[str, ...]]:
         """
@@ -228,7 +207,7 @@ class ManSource(AbstractDataSource):
         if self.any_sparse:
             mask = np.full((self.man_data.total_int.shape[0],), True)
 
-            # TODO: should this be moved into the data_converter? It is a standard part of all the sparse converters.
+            # TODO @DMD: should this be moved into the data_converter? It is a standard part of all the sparse converters.
             pos = self.man_data.total_pos[:, :]
             edges = self.sparse_axis_edges(fill_axis[0]) + 0.1
             labels = np.searchsorted(edges, pos[2, :])
@@ -244,25 +223,4 @@ class ManSource(AbstractDataSource):
                 self.man_data.total_int[mask],
                 [self.man_data.total_pos[2, mask]],
             )
-        else:
-            return self.man_data.dense[*memory_chunk]
-
-
-if __name__ == "__main__":
-    man_data = ManData()
-
-    man_source = ManSource(man_data)
-    ic(man_source.axis_order)
-    ic(man_source.any_sparse)
-
-    man_source = ManSource(
-        man_data, [Axis("time", 0, [], AxisDensity.CONTINUOUS, np.int16)]
-    )
-    ic(man_source.axis_order)
-    ic(man_source.any_sparse)
-
-    man_source = ManSource(
-        man_data, [Axis("mz", 2, [1, 2], AxisDensity.SPARSE, np.int16)]
-    )
-    ic(man_source.axis_order)
-    ic(man_source.any_sparse)
+        return self.man_data.dense[*memory_chunk]
