@@ -210,7 +210,7 @@ def choose_memory_buffer_and_data_chunks(
         )
 
     axis_definitions = args.data_source.axis_definitions()
-    if any(ax.density == AxisDensity.SPARSE for ax in axis_definitions):
+    if any(ax.density == AxisDensity.BINNED for ax in axis_definitions):
         counts_item_width = np.dtype(np.uint16).itemsize
         data_max_items[_count_subentry_name()] = int(
             args.field_options.max_bytes_per_chunk / counts_item_width,
@@ -228,7 +228,7 @@ def choose_memory_buffer_and_data_chunks(
         [
             np.dtype(ax.dtype).itemsize
             for ax in axis_definitions
-            if ax.density == AxisDensity.SPARSE
+            if ax.density == AxisDensity.BINNED
         ],
     )
     memory_max_item_count = int(args.memory_max_byte_count / size_per_item)
@@ -290,10 +290,6 @@ def provision_data_axis(
         for axis in axis_definitions:
             match axis.density:
                 case AxisDensity.CONTINUOUS:
-                    if len(axis.secondary_axes) > 0:
-                        raise ValueError(
-                            "A continuouse axis should not have secondary axis.",
-                        )
                     values = args.data_source.continuous_axis_values(axis)
                     if len(values) != full_shape[axis.primary_axis]:
                         raise ValueError(
@@ -306,12 +302,10 @@ def provision_data_axis(
                         unit=axis.units,
                     )
                     group_axes[axis.primary_axis].append(nx_axis)
-                case AxisDensity.SPARSE:
+                case AxisDensity.BINNED:
                     any_sparse_axis = True
-                    all_axis: list[int] = sorted(
-                        [axis.primary_axis, *axis.secondary_axes],
-                    )
-                    values = args.data_source.sparse_axis_edges(axis)[1:]
+                    all_axis: list[int] = list(range(axis.primary_axis + 1))
+                    values = args.data_source.binned_axis_edges(axis)[1:]
                     if len(values) != full_shape[axis.primary_axis]:
                         raise ValueError(
                             f"Expected {full_shape[axis.primary_axis] + 1} edges for {axis.name} but recived {len(values) + 1}.",
@@ -433,8 +427,8 @@ def provision_accumulation_subentries(
                     case AxisDensity.CONTINUOUS:
                         values = args.data_source.continuous_axis_values(ax)
                         edges.append(None)
-                    case AxisDensity.SPARSE:
-                        values = args.data_source.sparse_axis_edges(ax)[1:]
+                    case AxisDensity.BINNED:
+                        values = args.data_source.binned_axis_edges(ax)[1:]
                         edges.append(values)
                         has_sparse_axis = True
                     case _:
@@ -720,7 +714,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}) -> None:
         )
 
         sparse_axis = [
-            ax for ax in axis_definitions.values() if ax.density == AxisDensity.SPARSE
+            ax for ax in axis_definitions.values() if ax.density == AxisDensity.BINNED
         ]
 
         print(f"Processing file {args.in_path} and writing results to {args.out_path}")

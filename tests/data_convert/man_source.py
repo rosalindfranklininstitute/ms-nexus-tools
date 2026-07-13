@@ -67,9 +67,9 @@ class ManSource(AbstractDataSource):
 
         self.man_data = man_data
         self.axes: dict[str, Axis] = dict(
-            x=Axis("x", 0, [], AxisDensity.CONTINUOUS, np.int16, "m"),
-            y=Axis("y", 1, [], AxisDensity.CONTINUOUS, np.int16, "m"),
-            mz=Axis("mz", 2, [], AxisDensity.CONTINUOUS, np.int16, "mz"),
+            x=Axis("x", 0, AxisDensity.CONTINUOUS, np.int16, "m"),
+            y=Axis("y", 1, AxisDensity.CONTINUOUS, np.int16, "m"),
+            mz=Axis("mz", 2, AxisDensity.CONTINUOUS, np.int16, "mz"),
         )
         for axis in supplimentary_axes:
             self.axes[axis.name] = axis
@@ -81,7 +81,7 @@ class ManSource(AbstractDataSource):
             assert key == axis.name
             axis_primary.append(axis.primary_axis)
             self.axis_order.append(axis.name)
-            self.any_sparse |= axis.density == AxisDensity.SPARSE
+            self.any_sparse |= axis.density == AxisDensity.BINNED
         order = np.argsort(axis_primary)
         self.axis_order = [self.axis_order[oo] for oo in order]
         self.mz_binning = mz_binning
@@ -107,7 +107,7 @@ class ManSource(AbstractDataSource):
             for ax in self.axes.values():
                 if shape[ax.primary_axis] == 0:
                     ss = self.man_data.shape[ax.primary_axis]
-                    if ax.density == AxisDensity.SPARSE:
+                    if ax.density == AxisDensity.BINNED:
                         shape[ax.primary_axis] = ss // self.mz_binning
                     else:
                         shape[ax.primary_axis] = ss
@@ -153,15 +153,15 @@ class ManSource(AbstractDataSource):
             raise UnknownAxisError(axis.name, AxisDensity.CONTINUOUS)
         return np.arange(self.man_data.shape[axis.primary_axis])
 
-    def sparse_axis_edges(self, axis: Axis) -> np.ndarray:
+    def binned_axis_edges(self, axis: Axis) -> np.ndarray:
         """
         Returns the bin edges used to histogram the given sparse axis.
         This is used for generting the output accumulations accros this axis, if required.
         """
         if axis.name not in self.axes:
             raise UnknownAxisError(axis.name)
-        if self.axes[axis.name].density != AxisDensity.SPARSE:
-            raise UnknownAxisError(axis.name, AxisDensity.SPARSE)
+        if self.axes[axis.name].density != AxisDensity.BINNED:
+            raise UnknownAxisError(axis.name, AxisDensity.BINNED)
         return np.arange(
             0,
             self.man_data.shape[axis.primary_axis] + self.mz_binning,
@@ -209,7 +209,7 @@ class ManSource(AbstractDataSource):
 
             # TODO @DMD: should this be moved into the data_converter? It is a standard part of all the sparse converters.
             pos = self.man_data.total_pos[:, :]
-            edges = self.sparse_axis_edges(fill_axis[0]) + 0.1
+            edges = self.binned_axis_edges(fill_axis[0]) + 0.1
             labels = np.searchsorted(edges, pos[2, :])
             highest_mz = len(edges) - 1
             labels[labels == highest_mz] = highest_mz

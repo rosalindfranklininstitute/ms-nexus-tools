@@ -17,14 +17,13 @@ from .bounds import Chunk, Shape
 
 class AxisDensity(Enum):
     CONTINUOUS = 1
-    SPARSE = 2
+    BINNED = 2
 
 
 @dataclass
 class Axis:
     name: str
     primary_axis: int  # NOTE: Assumption: an axis only defines 1 dimension. Nexus is more poweful than this.
-    secondary_axes: list[int]
     density: AxisDensity
     dtype: npt.DTypeLike
     units: str | None = None
@@ -37,7 +36,7 @@ class UnknownAxisError(Exception):
                 super().__init__(f"Unknown axis: {name}")
             case AxisDensity.CONTINUOUS:
                 super().__init__(f"Unknown continuous axis: {name}")
-            case AxisDensity.SPARSE:
+            case AxisDensity.BINNED:
                 super().__init__(f"Unknown sparse axis: {name}")
 
 
@@ -176,7 +175,7 @@ class AbstractDataSource(AbstractContextManager):
         """
 
     @abstractmethod
-    def sparse_axis_edges(self, axis: Axis) -> np.ndarray:
+    def binned_axis_edges(self, axis: Axis) -> np.ndarray:
         """
         Returns the bin edges used to histogram the given sparse axis.
         This is used for generting the output accumulations accros this axis, if required.

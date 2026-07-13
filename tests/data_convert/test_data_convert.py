@@ -113,10 +113,10 @@ def get_dataset_total_and_used_chunks(fle, name):
     return total_chunks, n
 
 
-def test_sparse_single_axis_single_chunk(nx_file, man_data):
+def test_binned_single_axis_single_chunk(nx_file, man_data):
     man_data_source = man_source.ManSource(
         man_data,
-        supplimentary_axes=[Axis("mz", 2, [0, 1], AxisDensity.SPARSE, np.int16, "mz")],
+        supplimentary_axes=[Axis("mz", 2, AxisDensity.BINNED, np.int16, "mz")],
     )
 
     process_args = data_convert.ProcessArgs(
@@ -155,10 +155,10 @@ def test_sparse_single_axis_single_chunk(nx_file, man_data):
         assert "/entry/item_counts_total_image" not in fle
 
 
-def test_sparse_single_axis_multi_chunk(nx_file, man_data):
+def test_binned_single_axis_multi_chunk(nx_file, man_data):
     man_data_source = man_source.ManSource(
         man_data,
-        supplimentary_axes=[Axis("mz", 2, [0, 1], AxisDensity.SPARSE, np.int16, "mz")],
+        supplimentary_axes=[Axis("mz", 2, AxisDensity.BINNED, np.int16, "mz")],
     )
 
     process_args = data_convert.ProcessArgs(
@@ -196,10 +196,10 @@ def test_sparse_single_axis_multi_chunk(nx_file, man_data):
         assert "/entry/item_counts_total_image" not in fle
 
 
-def test_sparse_single_axis_single_chunk_with_mz_bin_2(nx_file, man_data):
+def test_binned_single_axis_single_chunk_with_mz_bin_2(nx_file, man_data):
     man_data_source = man_source.ManSource(
         man_data,
-        supplimentary_axes=[Axis("mz", 2, [0, 1], AxisDensity.SPARSE, np.int16, "mz")],
+        supplimentary_axes=[Axis("mz", 2, AxisDensity.BINNED, np.int16, "mz")],
         mz_binning=2,
     )
 
@@ -240,8 +240,8 @@ def test_dense_multi_axis_single_chunk(nx_file, man_data):
     man_data_source = man_source.ManSource(
         man_data,
         supplimentary_axes=[
-            Axis("time", 0, [], AxisDensity.CONTINUOUS, np.int16, "s"),
-            Axis("error", 2, [], AxisDensity.CONTINUOUS, np.int16, ""),
+            Axis("time", 0, AxisDensity.CONTINUOUS, np.int16, "s"),
+            Axis("error", 2, AxisDensity.CONTINUOUS, np.int16, ""),
         ],
     )
 
@@ -281,12 +281,12 @@ def test_dense_multi_axis_single_chunk(nx_file, man_data):
             assert fle[f"/entry/{data_name}/data/"].attrs["error_indices"] == 2
 
 
-def test_sparse_multi_continuous_axis_single_chunk(nx_file, man_data):
+def test_binned_multi_continuous_axis_single_chunk(nx_file, man_data):
     man_data_source = man_source.ManSource(
         man_data,
         supplimentary_axes=[
-            Axis("mz", 2, [1, 2], AxisDensity.SPARSE, np.int16, "s"),
-            Axis("time", 0, [], AxisDensity.CONTINUOUS, np.int16, "s"),
+            Axis("mz", 2, AxisDensity.BINNED, np.int16, "s"),
+            Axis("time", 0, AxisDensity.CONTINUOUS, np.int16, "s"),
         ],
     )
 
@@ -342,5 +342,5 @@ def test_sparse_multi_continuous_axis_single_chunk(nx_file, man_data):
     its prmary axis? 
     """,
 )
-def test_sparse_multi_sparse_axis_single_chunk():
+def test_binned_multi_binned_axis_single_chunk():
     pass
