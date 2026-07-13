@@ -323,24 +323,54 @@ def test_binned_multi_continuous_axis_single_chunk(nx_file, man_data):
             assert fle[f"/entry/{data_name}/data/"].attrs["mz_indices"] == 2
 
 
-@pytest.mark.skip(
-    reason=""" 
-    Currently only 1 axis is enforced, even though the API suggest 
-    multiple are possible. 
-    It is easy to see how nultiple sparse axis covering the same 
-    dimension might work (like error and mz.) But it is not entierly 
-    clear how it should work with multiple dimensions being sparse. 
-    For example, given (x,y,mz), how do we handle y and mz being
-    sparse? The exact values of y do need to be propogated over
-    mz, only x and y. But, that would require a seperate coords
-    for each primary dimension. 
-    In addition what if there was an exis (like y above) but where 
-    the secondary axis were not strictly those lower than its primary, 
-    axis. 
-    Does that even make sense? 
-    Or are its secondary axis always the full set of axis less than 
-    its prmary axis? 
-    """,
-)
-def test_binned_multi_binned_axis_single_chunk():
-    pass
+def test_binned_multi_binned_axis_single_chunk(nx_file, man_data):
+    man_data_source = man_source.ManSource(
+        man_data,
+        supplimentary_axes=[
+            Axis("mz", 2, AxisDensity.BINNED, np.int16, "mz"),
+            Axis("error", 2, AxisDensity.BINNED, np.int16, "%"),
+        ],
+    )
+
+    process_args = data_convert.ProcessArgs(
+        in_path=Path(__file__).parent / "Man1.txt",
+        out_path=nx_file,
+        chunk_max_byte_count=1024 * 1024,
+        memory_max_byte_count=1024 * 1024 * 1024,
+        data_source=man_data_source,
+    )
+    data_convert.process(process_args, {})
+
+    assert nx_file.exists()
+
+    with h5py.File(nx_file, "r") as fle:
+        for data_name in ["images", "spectra"]:
+            assert f"/entry/{data_name}/data/signal" in fle
+            assert f"/entry/{data_name}/data/x" in fle
+            assert f"/entry/{data_name}/data/y" in fle
+            assert f"/entry/{data_name}/data/mz" in fle
+            assert f"/entry/{data_name}/data/error" in fle
+
+            assert f"/entry/{data_name}/data/mz_exact" in fle
+            assert "mz_exact_indices" in fle[f"/entry/{data_name}/data/"].attrs
+
+            assert f"/entry/{data_name}/data/error_exact" in fle
+            assert "error_exact_indices" in fle[f"/entry/{data_name}/data/"].attrs
+
+            assert "x_indices" in fle[f"/entry/{data_name}/data/"].attrs
+            assert "y_indices" in fle[f"/entry/{data_name}/data/"].attrs
+            assert "mz_indices" in fle[f"/entry/{data_name}/data/"].attrs
+            assert "error_indices" in fle[f"/entry/{data_name}/data/"].attrs
+
+            assert np.all(
+                fle[f"/entry/{data_name}/data"].attrs["axes"] == ["x", "y", "mz"],
+            )
+            assert fle[f"/entry/{data_name}/data/"].attrs["x_indices"] == 0
+            assert fle[f"/entry/{data_name}/data/"].attrs["y_indices"] == 1
+            assert fle[f"/entry/{data_name}/data/"].attrs["mz_indices"] == 2
+            assert fle[f"/entry/{data_name}/data/"].attrs["error_indices"] == 2
+
+            assert np.all(
+                fle[f"/entry/{data_name}/data/mz_exact"][:, :, :]
+                == fle[f"/entry/{data_name}/data/error_exact"][:, :, :]
+            )

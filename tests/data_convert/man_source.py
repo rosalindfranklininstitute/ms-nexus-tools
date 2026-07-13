@@ -207,7 +207,6 @@ class ManSource(AbstractDataSource):
         if self.any_sparse:
             mask = np.full((self.man_data.total_int.shape[0],), True)
 
-            # TODO @DMD: should this be moved into the data_converter? It is a standard part of all the sparse converters.
             pos = self.man_data.total_pos[:, :]
             edges = self.binned_axis_edges(fill_axis[0]) + 0.1
             labels = np.searchsorted(edges, pos[2, :])
@@ -221,6 +220,6 @@ class ManSource(AbstractDataSource):
             return MultiCOO(
                 pos[:, mask],
                 self.man_data.total_int[mask],
-                [self.man_data.total_pos[2, mask]],
+                [self.man_data.total_pos[2, mask] for _ in fill_axis],
             )
         return self.man_data.dense[*memory_chunk]

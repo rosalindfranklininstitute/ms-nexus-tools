@@ -1,7 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Duncan McDougall <duncan.mcdougall@rfi.ac.uk>
 #
 # SPDX-License-Identifier: Apache-2.0
-from ms_nexus_tools.lib.dtypes import Intp1D, Bool1D
 
 from typing import Any, Iterable, Generator
 from threading import Lock, local
@@ -31,6 +30,9 @@ from ..lib.data_source import (
     AbstractDataSource,
     AxisDensity,
     Axis,
+    InvalidAxisError,
+)
+from ..lib.multi_coo import (
     MultiCOO,
 )
 from ..lib.bounds import Chunk, Shape
@@ -45,6 +47,7 @@ from ..lib.nxs import (
     create_group,
 )
 from ..lib.utils import format_bytes
+from ..lib.dtypes import Intp1D, Bool1D
 
 
 def _count_subentry_name() -> str:
@@ -282,7 +285,7 @@ def provision_data_axis(
 ) -> tuple[dict[str, Axis], bool]:
     axis_definitions = args.data_source.axis_definitions()
 
-    any_sparse_axis = False
+    any_binned_axis = False
     for entry_name, chunker, _ in data_chunks.items():
         group_axes = NxAxes()
         for _ in full_shape:
@@ -292,7 +295,7 @@ def provision_data_axis(
                 case AxisDensity.CONTINUOUS:
                     values = args.data_source.continuous_axis_values(axis)
                     if len(values) != full_shape[axis.primary_axis]:
-                        raise ValueError(
+                        raise InvalidAxisError(
                             f"Expected {full_shape[axis.primary_axis]} values for {axis.name} but recived {len(values)}.",
                         )
                     nx_axis = NxAxis.create(
@@ -303,11 +306,15 @@ def provision_data_axis(
                     )
                     group_axes[axis.primary_axis].append(nx_axis)
                 case AxisDensity.BINNED:
-                    any_sparse_axis = True
+                    if axis.primary_axis != len(full_shape) - 1:
+                        raise InvalidAxisError(
+                            "Only BINNED axis with primary_axis == (last dimension) are supported."
+                        )
+                    any_binned_axis = True
                     all_axis: list[int] = list(range(axis.primary_axis + 1))
                     values = args.data_source.binned_axis_edges(axis)[1:]
                     if len(values) != full_shape[axis.primary_axis]:
-                        raise ValueError(
+                        raise InvalidAxisError(
                             f"Expected {full_shape[axis.primary_axis] + 1} edges for {axis.name} but recived {len(values) + 1}.",
                         )
 
@@ -330,10 +337,10 @@ def provision_data_axis(
                     )
                     group_axes[axis.primary_axis].extend([nx_axis, nx_axis_exact])
                 case _:
-                    raise ValueError(f"Unknown Axis density: {axis.density}")
+                    raise InvalidAxisError(f"Unknown Axis density: {axis.density}")
         group_axes.add_to_group(nxs.root[entry_name]["data"])
 
-    return {ax.name: ax for ax in axis_definitions}, any_sparse_axis
+    return {ax.name: ax for ax in axis_definitions}, any_binned_axis
 
 
 @dataclass
@@ -343,7 +350,7 @@ class Accumulation:
     axis_edges: list[None | np.ndarray]
     shape: Shape
 
-    contains_sparse_axes: bool = field(init=False)
+    contains_binned_axes: bool = field(init=False)
     max_data: np.ndarray = field(init=False)
     sum_data: np.ndarray = field(init=False)
     ndim: int = field(init=False)
@@ -351,10 +358,10 @@ class Accumulation:
 
     def __post_init__(self):
 
-        self.contains_sparse_axes = False
+        self.contains_binned_axes = False
         for edge in self.axis_edges:
             if edge is not None:
-                self.contains_sparse_axes = True
+                self.contains_binned_axes = True
                 break
 
         self.max_data = np.zeros(self.shape)
@@ -410,7 +417,7 @@ def provision_accumulation_subentries(
                 ),
             ],
         )
-        has_sparse_axis = False
+        has_binned_axis = False
 
         for ax_name, ax in axis_definitions.items():
             if ax_name in axes:
@@ -430,9 +437,9 @@ def provision_accumulation_subentries(
                     case AxisDensity.BINNED:
                         values = args.data_source.binned_axis_edges(ax)[1:]
                         edges.append(values)
-                        has_sparse_axis = True
+                        has_binned_axis = True
                     case _:
-                        raise ValueError(f"Unknown Axis density: {ax.density}")
+                        raise InvalidAxisError(f"Unknown Axis density: {ax.density}")
                 count = len(values)
                 new_index = ax.primary_axis - np.sum(
                     axis_to_accumulate[0 : ax.primary_axis],
@@ -440,7 +447,7 @@ def provision_accumulation_subentries(
                 if acc_shape[new_index] == 0:
                     acc_shape[new_index] = count
                 elif count != acc_shape[new_index]:
-                    raise ValueError(
+                    raise InvalidAxisError(
                         f"Found conflicting sizes for {new_index}. Initially set to {acc_shape[new_index]} now trying to set to {count}",
                     )
 
@@ -474,7 +481,7 @@ def provision_accumulation_subentries(
             ),
         )
         group_axes.add_to_group(nxs.root[ac_name]["data"])
-        if has_sparse_axis:
+        if has_binned_axis:
             counts_name = f"{_count_subentry_name()}_{ac_name}"
             count_accumulations[counts_name] = Accumulation(
                 name=counts_name,
@@ -516,23 +523,21 @@ def write_data(
     args: ProcessArgs,
     memory_chunk: Chunk,
     full_shape: Shape,
-    sparse_axis: list[Axis],
+    binned_axis: list[Axis],
     chunk_data: np.ndarray | MultiCOO,
     data_chunks: DataChunks,
 ) -> tuple[np.ndarray, None] | tuple[sparse.COO, sparse.COO]:
-    if len(sparse_axis) == 0:
+    if len(binned_axis) == 0:
         if not isinstance(chunk_data, np.ndarray):
-            raise ValueError("Data is not sparse, expected a full block of data.")
+            raise ValueError("Data is not binned, expected a full block of data.")
 
         for data_entry in data_chunks.names:
             assert data_entry != _count_subentry_name()
             nxs.root[data_entry].data.signal[*memory_chunk] = chunk_data
         return chunk_data, None
-    if len(sparse_axis) != 1:
-        raise NotImplementedError("Only 1 sparse axis is supported.")
     if isinstance(chunk_data, np.ndarray):
         raise TypeError(
-            "Recived a sparse axis, with dense data. The data should be sparse. ",
+            "Recived a binned axis, with dense data. The data should be binned. ",
         )
 
     try:
@@ -548,18 +553,18 @@ def write_data(
         ic(np.max(chunk_data.coords, axis=1))
         raise
 
-    signal_data = sparse.COO(
+    coords_data = sparse.COO(
         coords=final_data.coords,
-        data=final_data.signal,
+        data=np.arange(len(final_data.signal)),
         shape=full_shape,
         sorted=True,
         has_duplicates=False,
         prune=False,
     )
 
-    axis_data = sparse.COO(
+    signal_data = sparse.COO(
         coords=final_data.coords,
-        data=final_data.axis[0],
+        data=final_data.signal,
         shape=full_shape,
         sorted=True,
         has_duplicates=False,
@@ -575,7 +580,7 @@ def write_data(
         prune=False,
     )
 
-    axis = sparse_axis[0]
+    axis = binned_axis[0]
 
     for data_entry, data_chunker, _ in data_chunks.items():
         cbounds = ContainedBounds.from_chunk(data_chunker.data_shape, memory_chunk)
@@ -631,15 +636,25 @@ def write_data(
             else:
                 signal_chunk = signal_data[*chunk]
 
-            axis_chunk = axis_data[*chunk]
             assert signal_chunk.nnz != 0
-            assert axis_chunk.nnz != 0
-            assert axis_chunk.nnz == signal_chunk.nnz
 
             nxs.root[data_entry].data.signal[*chunk] = signal_chunk.todense()
-            nxs.root[data_entry].data[f"{axis.name}_exact"][*chunk] = (
-                axis_chunk.todense()
-            )
+
+            coords_chunk = coords_data[*chunk]
+            assert coords_chunk.nnz != 0
+
+            coords = tuple([coords_chunk.coords[i, :] for i in range(len(chunk.shape))])
+            indices = coords_chunk.data
+
+            # TODO @DMD: Here all the binned axis share the same data type.
+            # https://github.com/orgs/rosalindfranklininstitute/projects/19/views/1?pane=issue&itemId=212408503
+            dense_axis_values = np.full(chunk.shape, np.nan)
+
+            for axis, axis_data in zip(binned_axis, final_data.axis, strict=True):
+                dense_axis_values[coords] = axis_data[indices]
+                nxs.root[data_entry].data[f"{axis.name}_exact"][*chunk] = (
+                    dense_axis_values
+                )
     return signal_data, count_data
 
 
@@ -699,7 +714,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}) -> None:
 
         provision_subentries(nxs, args, data_chunks)
 
-        axis_definitions, any_sparse_axis = provision_data_axis(
+        axis_definitions, any_binned_axis = provision_data_axis(
             nxs,
             args,
             full_shape,
@@ -713,7 +728,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}) -> None:
             axis_definitions,
         )
 
-        sparse_axis = [
+        binned_axis = [
             ax for ax in axis_definitions.values() if ax.density == AxisDensity.BINNED
         ]
 
@@ -728,9 +743,9 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}) -> None:
         print(
             f" Dense usage: {np.prod(memory_chunks.chunk_shape)} items ({format_bytes(np.prod(memory_chunks.chunk_shape) * size_per_item)}).",
         )
-        if density < 1:
+        if len(binned_axis) > 0:
             print(
-                f" Sparse usage: {int(np.prod(memory_chunks.chunk_shape) * density)} items ({format_bytes(np.prod(memory_chunks.chunk_shape) * size_per_item * density)}), worst case density {density:.2f}.",
+                f" Binned usage: {int(np.prod(memory_chunks.chunk_shape) * density)} items ({format_bytes(np.prod(memory_chunks.chunk_shape) * size_per_item * density)}), worst case density {density:.2f}.",
             )
         print("With data blocks:")
         print(
@@ -755,7 +770,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}) -> None:
                 with data_source_lock:
                     local_store.chunk_data = args.data_source.fill_chunk(
                         memory_chunk,
-                        sparse_axis,
+                        binned_axis,
                         overall_reads_timer.update,
                     )
 
@@ -765,7 +780,7 @@ def process(args: ProcessArgs, config: dict[str, Any] = {}) -> None:
                         args,
                         memory_chunk,
                         full_shape,
-                        sparse_axis,
+                        binned_axis,
                         local_store.chunk_data,
                         data_chunks,
                     )
