@@ -2,7 +2,6 @@
 #
 # SPDX-License-Identifier: Apache-2.0
 from functools import reduce
-from ms_nexus_tools.lib.data_source import Axis, AxisDensity
 
 from pathlib import Path
 
@@ -11,8 +10,9 @@ import h5py
 
 from ms_nexus_tools.lib.chunker import count_chunks_to_cover
 from ms_nexus_tools.api import data_convert
+from ms_nexus_tools.lib.data_source import Axis, AxisDensity
 
-from . import man_source
+from .data import man_source
 
 import pytest
 
@@ -71,7 +71,7 @@ def test_dense_single_axis_single_chunk(nx_file, man_data):
     man_data_source = man_source.ManSource(man_data)
 
     process_args = data_convert.ProcessArgs(
-        in_path=Path(__file__).parent / "Man1.txt",
+        in_path=Path(__file__).parent / "data" / "Man1.txt",
         out_path=nx_file,
         chunk_max_byte_count=1024 * 1024,
         memory_max_byte_count=1024 * 1024 * 1024,
@@ -89,7 +89,7 @@ def test_dense_single_axis_multi_chunk(nx_file, man_data):
     man_data_source = man_source.ManSource(man_data)
 
     process_args = data_convert.ProcessArgs(
-        in_path=Path(__file__).parent / "Man1.txt",
+        in_path=Path(__file__).parent / "data" / "Man1.txt",
         out_path=nx_file,
         chunk_max_byte_count=240 * 2,
         memory_max_byte_count=8 * 8 * 20 * 2,
@@ -120,7 +120,7 @@ def test_binned_single_axis_single_chunk(nx_file, man_data):
     )
 
     process_args = data_convert.ProcessArgs(
-        in_path=Path(__file__).parent / "Man1.txt",
+        in_path=Path(__file__).parent / "data" / "Man1.txt",
         out_path=nx_file,
         chunk_max_byte_count=1024 * 1024,
         memory_max_byte_count=1024 * 1024 * 1024,
@@ -162,7 +162,7 @@ def test_binned_single_axis_multi_chunk(nx_file, man_data):
     )
 
     process_args = data_convert.ProcessArgs(
-        in_path=Path(__file__).parent / "Man1.txt",
+        in_path=Path(__file__).parent / "data" / "Man1.txt",
         out_path=nx_file,
         chunk_max_byte_count=240 * 2,
         memory_max_byte_count=8 * 8 * 20 * 4,
@@ -204,7 +204,7 @@ def test_binned_single_axis_single_chunk_with_mz_bin_2(nx_file, man_data):
     )
 
     process_args = data_convert.ProcessArgs(
-        in_path=Path(__file__).parent / "Man1.txt",
+        in_path=Path(__file__).parent / "data" / "Man1.txt",
         out_path=nx_file,
         chunk_max_byte_count=1024 * 1024,
         memory_max_byte_count=1024 * 1024 * 1024,
@@ -246,7 +246,7 @@ def test_dense_multi_axis_single_chunk(nx_file, man_data):
     )
 
     process_args = data_convert.ProcessArgs(
-        in_path=Path(__file__).parent / "Man1.txt",
+        in_path=Path(__file__).parent / "data" / "Man1.txt",
         out_path=nx_file,
         chunk_max_byte_count=1024 * 1024,
         memory_max_byte_count=1024 * 1024 * 1024,
@@ -291,7 +291,7 @@ def test_binned_multi_continuous_axis_single_chunk(nx_file, man_data):
     )
 
     process_args = data_convert.ProcessArgs(
-        in_path=Path(__file__).parent / "Man1.txt",
+        in_path=Path(__file__).parent / "data" / "Man1.txt",
         out_path=nx_file,
         chunk_max_byte_count=1024 * 1024,
         memory_max_byte_count=1024 * 1024 * 1024,
@@ -333,7 +333,7 @@ def test_binned_multi_binned_axis_single_chunk(nx_file, man_data):
     )
 
     process_args = data_convert.ProcessArgs(
-        in_path=Path(__file__).parent / "Man1.txt",
+        in_path=Path(__file__).parent / "data" / "Man1.txt",
         out_path=nx_file,
         chunk_max_byte_count=1024 * 1024,
         memory_max_byte_count=1024 * 1024 * 1024,
