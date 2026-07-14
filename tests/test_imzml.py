@@ -4,7 +4,6 @@
 from pathlib import Path
 
 import numpy as np
-import h5py
 
 from ms_nexus_tools.api import data_convert, imzml
 from ms_nexus_tools.lib.data_source import Axis, AxisDensity

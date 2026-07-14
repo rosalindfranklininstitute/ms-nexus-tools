@@ -17,8 +17,6 @@ from datargs import arg_field, FilePathType, ConfigFileArgs, InteractiveArgs, Ar
 
 from ..lib.nxs import NexusFile
 
-from icecream import ic
-
 
 @dataclass
 class ProcessArgs(ConfigFileArgs, InteractiveArgs):
